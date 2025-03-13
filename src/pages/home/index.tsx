@@ -8,7 +8,6 @@ import { checkToxicity, censorText } from '@/repository/toxicity.service';
 import { DocumentResponse, Post } from '@/types';
 import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
-import avatar from "@/assets/images/avatar.png";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface IHomeProps {}
