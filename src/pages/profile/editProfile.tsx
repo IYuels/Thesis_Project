@@ -3,19 +3,16 @@ import Layout from '@/components/layout';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { FileEntry, ProfileInfo, UserProfile } from '@/types';
+import { FileEntry, UserProfile } from '@/types';
 import * as React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import avatar from '@/assets/images/avatar.png';
 import { Input } from '@/components/ui/input';
 import { createUserProfile, updateUserProfile } from '@/repository/user.service';
-import { useUserAuth } from '@/context/userAuthContext';
-import { updateUserInfoOnPosts } from '@/repository/post.service';
 
 interface IEditProfileProps {}
 
 const EditProfile: React.FunctionComponent<IEditProfileProps> = () => {
-    const {user, updateProfileInfo} = useUserAuth();
     const location = useLocation();
     const navigate = useNavigate();
     const { id, userId, userBio, displayName, photoURL } = location.state;
@@ -38,15 +35,6 @@ const EditProfile: React.FunctionComponent<IEditProfileProps> = () => {
                 const response = await createUserProfile(data);
                 console.log("The created profile is : ", response);
             }
-            const profileInfo: ProfileInfo = {
-                user: user!,
-                displayName: data.displayName,
-                photoURL: data.photoURL,
-            };
-            updateProfileInfo(profileInfo);
-
-            updateUserInfoOnPosts(profileInfo);
-
             navigate("/profile");
         } catch (err) {
             console.log(err);
@@ -75,7 +63,7 @@ const EditProfile: React.FunctionComponent<IEditProfileProps> = () => {
                                     <img src={data.photoURL ? data.photoURL : avatar} alt='avatar' 
                                     className='w-35 h-35 rounded-full border-2 border-slate-800 object-center'/>}
                                 </div>
-                                <FileUploader fileEntry={fileEntry} onChange={setFileEntry} preview ={false}/>
+                                <FileUploader fileEntry={fileEntry} onChange={setFileEntry}/>
                             </div>
                             <div className="flex flex-col">
                                 <Label className='mb-4' htmlFor='displayName'>Display Name</Label>

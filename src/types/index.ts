@@ -17,6 +17,7 @@ export interface FileEntry {
 }
 
 export interface Post {
+    id: string;
     caption: string;
     likes: number;
     userlikes: string[];
@@ -57,10 +58,17 @@ export interface DocumentResponse {
     originalCaption?: string; // Optional field for original caption
 }
 
-export interface ProfileInfo{
-    user?: User;
+export interface ProfileInfo {
+    user: User;
+    displayName: string;
+    photoURL: string;
+}
+
+export interface UserInfoForPosts {
+    user?: string;
     displayName?: string;
     photoURL?: string;
+    userId?: string;  // Using userId instead of user for clarity
 }
 
 export interface UserProfile {

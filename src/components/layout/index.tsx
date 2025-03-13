@@ -1,7 +1,6 @@
 import * as React from 'react';
 import { useState } from 'react';
 import Sidebar from '../sidebar';
-import { useUserAuth } from '@/context/userAuthContext'; // Import the auth context if needed
 
 interface ILayoutProps {
     children: React.ReactNode;
@@ -9,8 +8,6 @@ interface ILayoutProps {
 
 const Layout: React.FunctionComponent<ILayoutProps> = ({ children }) => {
     const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
-    const [showLogoutConfirm, setShowLogoutConfirm] = useState<boolean>(false);
-    const { logOut } = useUserAuth(); // Get the logout function from your auth context
 
     const toggleSidebar = () => {
         setSidebarOpen(!sidebarOpen);
@@ -18,19 +15,6 @@ const Layout: React.FunctionComponent<ILayoutProps> = ({ children }) => {
     
     const closeSidebar = () => {
         setSidebarOpen(false);
-    };
-
-    const handleLogoutClick = () => {
-        setShowLogoutConfirm(true);
-    };
-
-    const confirmLogout = () => {
-        logOut(); // Call your logout function
-        setShowLogoutConfirm(false);
-    };
-
-    const cancelLogout = () => {
-        setShowLogoutConfirm(false);
     };
 
     return (
@@ -69,8 +53,8 @@ const Layout: React.FunctionComponent<ILayoutProps> = ({ children }) => {
                 `}
             >
                 <Sidebar 
-                    onClose={closeSidebar} 
-                    onLogoutClick={handleLogoutClick} 
+                    onClose={closeSidebar}
+                    // Pass logout function directly to Sidebar - removed onLogoutClick
                 />
             </div>
 
@@ -101,29 +85,7 @@ const Layout: React.FunctionComponent<ILayoutProps> = ({ children }) => {
                 </div>
             </aside>
 
-            {/* Logout Confirmation Modal - Now at the layout level */}
-            {showLogoutConfirm && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-white p-6 rounded-lg shadow-lg max-w-sm w-full mx-4">
-                        <h3 className="text-lg font-medium mb-4">Confirm Logout</h3>
-                        <p className="mb-6">Are you sure you want to logout?</p>
-                        <div className="flex justify-end space-x-3">
-                            <button 
-                                onClick={cancelLogout}
-                                className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100"
-                            >
-                                Cancel
-                            </button>
-                            <button 
-                                onClick={confirmLogout}
-                                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
-                            >
-                                Logout
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* Removed the Logout Confirmation Modal - now handled in Sidebar */}
         </div>
     );
 };

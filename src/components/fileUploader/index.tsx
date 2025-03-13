@@ -7,13 +7,11 @@ import { FileEntry } from '@/types';
 interface IProfilePictureUploaderProps {
   fileEntry: FileEntry;
   onChange: (fileEntry: FileEntry) => void;
-  preview?: boolean;
 }
 
 const ProfilePictureUploader: React.FunctionComponent<IProfilePictureUploaderProps> = ({ 
   fileEntry, 
-  onChange, 
-  preview = true 
+  onChange
 }) => {
   const [uploadedFiles, setUploadedFiles] = useState<OutputFileEntry<'success'>[]>([]);
   const [isUploading, setIsUploading] = useState<boolean>(false);
@@ -62,7 +60,7 @@ const ProfilePictureUploader: React.FunctionComponent<IProfilePictureUploaderPro
     accept: "image/*",
     cropPreset: "1:1", // Ensures square cropping for profile pictures
     imageShrink: "512x512", // Optimizes image size
-    previewStep: preview,
+    previewStep: false, // Disabled preview
     effects: "enhance, sharp", // Basic image enhancement
     ctxProviderRef: ctxProviderRef
   };
@@ -132,60 +130,6 @@ const ProfilePictureUploader: React.FunctionComponent<IProfilePictureUploaderPro
                 >
                   Change Photo
                 </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-6 grid grid-cols-2 gap-4 max-w-md mx-auto">
-            <div className="bg-white p-3 rounded-lg shadow-sm">
-              <h4 className="text-sm font-medium text-gray-700 mb-2">Original</h4>
-              <div className="aspect-square overflow-hidden rounded-md">
-                <img
-                  src={`${fileEntry.files[0].cdnUrl}`}
-                  alt="Original"
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            </div>
-            
-            <div className="bg-white p-3 rounded-lg shadow-sm">
-              <h4 className="text-sm font-medium text-gray-700 mb-2">Enhanced</h4>
-              <div className="aspect-square overflow-hidden rounded-md">
-                <img
-                  src={`${fileEntry.files[0].cdnUrl}/-/enhance/50/`}
-                  alt="Enhanced"
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            </div>
-          </div>
-          
-          <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-            <h4 className="text-sm font-medium text-gray-700 mb-2">Apply effects (preview)</h4>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="overflow-hidden rounded-md aspect-square">
-                <img
-                  src={`${fileEntry.files[0].cdnUrl}/-/filter/grayscale/`}
-                  alt="Grayscale"
-                  className="w-full h-full object-cover"
-                />
-                <p className="text-xs text-center mt-1">Grayscale</p>
-              </div>
-              <div className="overflow-hidden rounded-md aspect-square">
-                <img
-                  src={`${fileEntry.files[0].cdnUrl}/-/filter/invert/`}
-                  alt="Invert"
-                  className="w-full h-full object-cover"
-                />
-                <p className="text-xs text-center mt-1">Invert</p>
-              </div>
-              <div className="overflow-hidden rounded-md aspect-square">
-                <img
-                  src={`${fileEntry.files[0].cdnUrl}/-/sharp/10/`}
-                  alt="Sharpen"
-                  className="w-full h-full object-cover"
-                />
-                <p className="text-xs text-center mt-1">Sharpen</p>
               </div>
             </div>
           </div>

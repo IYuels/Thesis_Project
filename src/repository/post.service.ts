@@ -28,6 +28,7 @@ export const getPosts = async () => {
           caption: data.caption || "",
           likes: data.likes || 0,
           userlikes: data.userlikes || [],
+          postID: data.postID || "",
           userID: data.userID || "",
           date: data.date || new Date(),
           username: data.username || "",

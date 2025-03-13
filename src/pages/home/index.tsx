@@ -54,6 +54,7 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
     
     // Cache for toxicity results to avoid redundant API calls
     const toxicityCache = React.useRef<Map<string, any>>(new Map());
+    
 
     const getAllPost = async() => {
         setIsLoading(true);
@@ -87,6 +88,7 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
     }, [user]);
 
     const [post, setPost] = React.useState<Post>({
+        id:"",
         caption: '',
         likes: 0,
         userlikes: [],
@@ -395,6 +397,7 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
             
             // Reset form state
             setPost({
+                id:"",
                 caption: '',
                 likes: 0,
                 userlikes: [],
@@ -454,7 +457,6 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
             }
         });
     };
-    
     return (
         <Layout>
             {/* Post creation card with responsive padding and width */}
@@ -464,11 +466,6 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
                         <form onSubmit={handleSubmit}>
                             <div className="flex flex-col">
                                 <div className='flex flex-row min-h-[60px] w-full rounded-md bg-transparent px-2 sm:px-3 py-2 text-sm md:text-base'>
-                                    <img 
-                                        src={user?.photoURL ? user?.photoURL: avatar} 
-                                        className='w-8 h-8 sm:w-10 sm:h-10 rounded-full border-2 border-slate-800 object-center mr-2'
-                                        alt="User avatar"
-                                    />
                                     <Textarea 
                                         className='mb-4 sm:mb-8 text-sm sm:text-base'
                                         id='caption'

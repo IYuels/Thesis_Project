@@ -13,12 +13,21 @@ interface ICreatePostProps {}
 const CreatePost: React.FunctionComponent<ICreatePostProps> = () => {
     const navigate = useNavigate();
     const { user } = useUserAuth();
-    const [post , setPost] = React.useState<Post>({
+    const [post, setPost] = React.useState<Post>({
+        id: "",
         caption: '',
         likes: 0,
         userlikes: [],
-        userID: null,
-        date: new Date()
+        userID: user?.uid || null,
+        username: user?.displayName || '',
+        photoURL: user?.photoURL || '',
+        date: new Date(),
+        toxicity: {
+            is_toxic: false,
+            detected_categories: [],
+            results: {}
+        },
+        originalCaption: ''
     });
 
     const handleReload = () => {

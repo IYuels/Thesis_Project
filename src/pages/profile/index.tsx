@@ -41,6 +41,7 @@ const Profile: React.FunctionComponent<IProfileProps> = () => {
                     // Create DocumentResponse object with all required fields
                     const responseObj: DocumentResponse = {
                         id: doc.id,
+                        postID: data.id,
                         caption: data.caption || "",
                         likes: data.likes || 0,
                         userlikes: data.userlikes || [],
@@ -108,7 +109,7 @@ const Profile: React.FunctionComponent<IProfileProps> = () => {
                                 <div className="m-2">Comments</div>
                                 {/* Render comments for this post */}
                                 {postComments.length > 0 ? (
-                                    <div className=" border p-5 mr-5  ml-5 rounded-2xl space-y-2 px-2 sm:px-3 pb-2 sm:pb-3">
+                                    <div className=" p-5 mr-5  ml-5 rounded-2xl space-y-2 px-2 sm:px-3 pb-2 sm:pb-3">
                                         {postComments.map((item) => (
                                             <CommentCard data={item} key={item.id}/>
                                         ))}

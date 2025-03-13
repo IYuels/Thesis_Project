@@ -17,8 +17,13 @@ interface IPostCardProps {
 }
 
 const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
+    
     const [isVisible, setIsVisible] = React.useState(false);
     const [showToxicityDetails, setShowToxicityDetails] = React.useState(false);
+    const [postDisplayData, setPostDisplayData] = React.useState({
+        username: data.username || "Guest_User",
+        photoURL: data.photoURL || avatar
+    });
     
     // Determine if post has toxicity data and is toxic
     const hasToxicityWarning = data.toxicity && data.toxicity.is_toxic;
@@ -26,7 +31,7 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
     const toggleVisibility = () => {
         setIsVisible(!isVisible);
     };
-    const {user} = useUserAuth();
+    const {user, userProfile, registerProfileUpdateListener} = useUserAuth();
     const [likesInfo, setLikesInfo] = React.useState<{
         likes: number,
         isLike: boolean
@@ -34,6 +39,53 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
         likes: data.likes!,
         isLike: data.userlikes?.includes(user!.uid) ? true : false
     });
+
+    // First, add this ref to prevent multiple registrations
+const listenerRegistered = React.useRef(false);
+
+// Replace the problematic useEffect with this optimized version
+React.useEffect(() => {
+  // Only register the listener once and only if this post belongs to the current user
+  if (user && data.userID === user.uid && !listenerRegistered.current) {
+    listenerRegistered.current = true;
+    
+    // Handle initial profile data
+    if (userProfile) {
+      setPostDisplayData({
+        username: userProfile.displayName || "Guest_User",
+        photoURL: userProfile.photoURL || avatar
+      });
+    }
+    
+    // Register listener only once
+    const unsubscribe = registerProfileUpdateListener(() => {
+      // Use functional state update to avoid dependency issues
+      if (userProfile) {
+        setPostDisplayData(prevData => {
+          // Only update if values have actually changed
+          if (prevData.username !== (userProfile.displayName || "Guest_User") || 
+              prevData.photoURL !== (userProfile.photoURL || avatar)) {
+            return {
+              username: userProfile.displayName || "Guest_User",
+              photoURL: userProfile.photoURL || avatar
+            };
+          }
+          return prevData; // Return previous state if no changes needed
+        });
+      }
+    });
+    
+    // Clean up function
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+        listenerRegistered.current = false;
+      }
+    };
+  }
+  // Minimal dependency array - avoid including functions if possible
+}, [user, data.userID]);
+
 
     const updateLike = async (isVal: boolean) => {
         setLikesInfo({
@@ -138,7 +190,6 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
     
     const getAllComment = async() => {
         const response = await getComment() || [];
-        console.log("All comments are ", response);
         setData(response);
     };
     
@@ -146,7 +197,8 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
         if(user != null){
             getAllComment();
         }
-    }, []);
+    }, [])
+    
     
     // Filter comments that belong to this post
     const postComments = commentData.filter((item) => item.postID === data.id);
@@ -160,12 +212,12 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
                             <CardTitle className="text-sm flex items-center justify-start">
                                 <span className="mr-2">
                                     <img 
-                                        src={data.photoURL ? data?.photoURL: avatar}
+                                        src={postDisplayData.photoURL}
                                         className="w-8 h-8 sm:w-10 sm:h-10 rounded-full border-2 border-transparent object-cover"
-                                        alt={`${data.username}'s profile`}
+                                        alt={`${postDisplayData.username}'s profile`}
                                     />
                                 </span>
-                                <span className="text-xs sm:text-sm font-medium">{data.username || "Guest_User"}</span>
+                                <span className="text-xs sm:text-sm font-medium">{postDisplayData.username}</span>
                             </CardTitle>
                             
                             {/* Toxicity warning icon */}

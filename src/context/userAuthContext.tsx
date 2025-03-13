@@ -9,14 +9,27 @@ import {
   signInWithPopup,
   sendEmailVerification,
   UserCredential,
-  sendPasswordResetEmail
+  sendPasswordResetEmail,
+  updateProfile
 } from "firebase/auth";
 import { auth } from "@/firebaseConfig";
 import { Navigate } from 'react-router-dom';
+import { ProfileResponse, UserProfile } from "@/types";
+import { getUserProfile, updateUserProfile as updateUserProfileInDB, createUserProfile } from "@/repository/user.service";
+import avatar from "@/assets/images/avatar.png";
+
+// Profile info interface
+export interface ProfileInfo {
+  user: User;
+  displayName: string;
+  photoURL: string;
+}
 
 interface UserAuthContextProps {
   user: User | null;
+  userProfile: ProfileResponse | null;
   loading: boolean;
+  profileLoading: boolean;
   error: string | null;
   signUp: (email: string, password: string) => Promise<UserCredential>;
   login: (email: string, password: string) => Promise<UserCredential>;
@@ -24,17 +37,24 @@ interface UserAuthContextProps {
   logout: () => Promise<void>;
   sendVerificationEmail: (user: User) => Promise<void>;
   forgotPassword: (email: string) => Promise<void>;
+  updateProfileInfo: (profileInfo: ProfileInfo) => Promise<void>;
+  updateUserProfile: (profileData: ProfileResponse) => Promise<void>;
+  refreshUserProfile: () => Promise<void>;
   isEmailVerified: boolean;
   clearError: () => void;
+  registerProfileUpdateListener: (callback: () => void) => () => void;
 }
-
 const userAuthContext = createContext<UserAuthContextProps | undefined>(undefined);
 
 export function UserAuthContextProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [userProfile, setUserProfile] = useState<ProfileResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [profileLoading, setProfileLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [isEmailVerified, setIsEmailVerified] = useState<boolean>(false);
+  const [profileUpdateListeners, setProfileUpdateListeners] = useState<(() => void)[]>([]);
+
 
   function clearError() {
     setError(null);
@@ -44,7 +64,20 @@ export function UserAuthContextProvider({ children }: { children: ReactNode }) {
     try {
       setLoading(true);
       clearError();
-      return await createUserWithEmailAndPassword(auth, email, password);
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      
+      // Create initial user profile
+      if (userCredential.user) {
+        const initialProfile: UserProfile = {
+          userId: userCredential.user.uid,
+          displayName: userCredential.user.displayName || email.split('@')[0],
+          photoURL: userCredential.user.photoURL || "",
+          userBio: "Please update your bio..."
+        };
+        await createUserProfile(initialProfile);
+      }
+      
+      return userCredential;
     } catch (err: any) {
       let errorMessage = "Failed to create account";
       
@@ -99,7 +132,23 @@ export function UserAuthContextProvider({ children }: { children: ReactNode }) {
       setLoading(true);
       clearError();
       const googleAuthProvider = new GoogleAuthProvider();
-      return await signInWithPopup(auth, googleAuthProvider);
+      const userCredential = await signInWithPopup(auth, googleAuthProvider);
+      
+      // Check if profile exists, if not create it
+      if (userCredential.user) {
+        const existingProfile = await getUserProfile(userCredential.user.uid);
+        if (!existingProfile || !existingProfile.id) {
+          const initialProfile: UserProfile = {
+            userId: userCredential.user.uid,
+            displayName: userCredential.user.displayName || "Guest_user",
+            photoURL: userCredential.user.photoURL || "",
+            userBio: "Please update your bio..."
+          };
+          await createUserProfile(initialProfile);
+        }
+      }
+      
+      return userCredential;
     } catch (err: any) {
       let errorMessage = "Failed to sign in with Google";
       
@@ -121,6 +170,7 @@ export function UserAuthContextProvider({ children }: { children: ReactNode }) {
       setLoading(true);
       clearError();
       await signOut(auth);
+      setUserProfile(null); // Clear user profile on logout
     } catch (err: any) {
       setError(err.message || "Failed to log out");
       throw err;
@@ -165,6 +215,178 @@ export function UserAuthContextProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  async function updateProfileInfo(profileInfo: ProfileInfo): Promise<void> {
+    try {
+      setLoading(true);
+      clearError();
+      
+      // Update the Firebase Auth profile
+      await updateProfile(profileInfo.user, {
+        displayName: profileInfo.displayName,
+        photoURL: profileInfo.photoURL
+      });
+
+      // Refresh the user state to reflect the changes
+      setUser({ ...profileInfo.user, displayName: profileInfo.displayName, photoURL: profileInfo.photoURL });
+      
+      // Also update the userProfile state if it exists
+      if (userProfile?.id) {
+        const updatedProfile: UserProfile = {
+          userId: profileInfo.user.uid,
+          displayName: profileInfo.displayName,
+          photoURL: profileInfo.photoURL,
+          userBio: userProfile.userBio || "Please update your bio..."
+        };
+        
+        // Update in database
+        await updateUserProfileInDB(userProfile.id, updatedProfile);
+        
+        // Update the local state
+        setUserProfile({
+          ...userProfile,
+          displayName: profileInfo.displayName,
+          photoURL: profileInfo.photoURL
+        });
+      } else {
+        // Profile doesn't exist yet, create it
+        const newProfile: UserProfile = {
+          userId: profileInfo.user.uid,
+          displayName: profileInfo.displayName,
+          photoURL: profileInfo.photoURL,
+          userBio: "Please update your bio..."
+        };
+        const docRef = await createUserProfile(newProfile);
+        if (docRef) {
+          setUserProfile({
+            id: docRef.id,
+            ...newProfile
+          });
+        }
+      }
+      
+    } catch (err: any) {
+      let errorMessage = "Failed to update profile";
+      
+      if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      setError(errorMessage);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // New function to update user profile
+  async function updateUserProfile(profileData: ProfileResponse): Promise<void> {
+    try {
+      setProfileLoading(true);
+      clearError();
+      
+      if (!profileData.id) {
+        throw new Error("Profile ID is required for update");
+      }
+      
+      // Prepare update data
+      const updateData: UserProfile = {
+        userId: profileData.userId || user?.uid || "",
+        displayName: profileData.displayName || "Guest_user",
+        photoURL: profileData.photoURL || "",
+        userBio: profileData.userBio || "Please update your bio..."
+      };
+       
+      // Update profile in database
+      await updateUserProfileInDB(profileData.id, updateData);
+      
+      // Update local state
+      setUserProfile(profileData);
+      
+      // If Firebase auth fields need updating too
+      if (user && (profileData.displayName !== user.displayName || profileData.photoURL !== user.photoURL)) {
+        await updateProfile(user, {
+          displayName: profileData.displayName,
+          photoURL: profileData.photoURL
+        });
+        
+        // Refresh the user state with updated values
+        setUser({ ...user, displayName: profileData.displayName || null, photoURL: profileData.photoURL || avatar });
+      }
+      notifyProfileUpdated();
+    } catch (err: any) {
+      let errorMessage = "Failed to update profile";
+      if (err.message) {
+        errorMessage = err.message;
+      }
+      setError(errorMessage);
+      throw err;
+    } finally {
+      setProfileLoading(false);
+    }
+  }
+
+  // New function to manually refresh the user profile
+  async function refreshUserProfile(): Promise<void> {
+    if (!user?.uid) return;
+    
+    try {
+      setProfileLoading(true);
+      clearError();
+      const profileData = await getUserProfile(user.uid);
+      if (profileData) {
+        setUserProfile(profileData);
+      } else {
+        // Profile doesn't exist yet, create a default one
+        const newProfile: UserProfile = {
+          userId: user.uid,
+          displayName: user.displayName || "Guest_user",
+          photoURL: user.photoURL || "",
+          userBio: "Please update your bio..."
+        };
+        const docRef = await createUserProfile(newProfile);
+        if (docRef) {
+          setUserProfile({
+            id: docRef.id,
+            ...newProfile
+          });
+        }
+      }
+    } catch (err: any) {
+      let errorMessage = "Failed to refresh profile";
+      if (err.message) {
+        errorMessage = err.message;
+      }
+      setError(errorMessage);
+      // We don't throw here to prevent cascading errors
+      console.error("Error refreshing profile:", err);
+    } finally {
+      setProfileLoading(false);
+    }
+  }
+
+  
+
+  // Load user profile when user changes
+  useEffect(() => {
+    if (user?.uid) {
+      refreshUserProfile();
+    }
+  }, [user?.uid]);
+
+  function registerProfileUpdateListener(callback: () => void) {
+    setProfileUpdateListeners(prev => [...prev, callback]);
+    // Return an unsubscribe function
+    return () => {
+      setProfileUpdateListeners(prev => prev.filter(cb => cb !== callback));
+    };
+  }
+
+    // Add this function to notify listeners
+  function notifyProfileUpdated() {
+    profileUpdateListeners.forEach(callback => callback());
+  }
+
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
@@ -179,7 +401,9 @@ export function UserAuthContextProvider({ children }: { children: ReactNode }) {
 
   const value = {
     user,
+    userProfile,
     loading,
+    profileLoading,
     error,
     signUp,
     login,
@@ -187,10 +411,13 @@ export function UserAuthContextProvider({ children }: { children: ReactNode }) {
     logout,
     sendVerificationEmail,
     forgotPassword,
+    updateProfileInfo,
+    updateUserProfile,
+    refreshUserProfile,
     isEmailVerified,
-    clearError
+    clearError,
+    registerProfileUpdateListener
   };
-
   return (
     <userAuthContext.Provider value={value}>
       {children}
