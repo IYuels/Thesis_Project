@@ -6,12 +6,14 @@ import { cn } from '@/lib/utils';
 import { CardContent, CardHeader, CardTitle } from '../ui/card';
 import { ThumbsUpIcon, AlertTriangle } from 'lucide-react';
 import avatar from "@/assets/images/avatar.png";
+import ToxicityWarningModal from '../toxicityWarningModal';
 
 interface ICommentCardProps {
     data: Comment;
 }
 
 const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data }) => {
+    const [showToxicityWarningModal, setShowToxicityWarningModal] = React.useState(false);
     const { user, userProfile } = useUserAuth();
     const [showToxicity, setShowToxicity] = React.useState(false);
     const hasToxicity = data.toxicity && data.toxicity.is_toxic;
@@ -61,22 +63,16 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data }) => {
                     <span>{displayName}</span>
                 </CardTitle>
                 {hasToxicity && (
-                    <button 
-                        onClick={() => setShowToxicity(!showToxicity)}
-                        className="text-yellow-500 focus:outline-none"
-                        title="Content warning"
-                    >
-                        <AlertTriangle size={16} />
-                    </button>
+                <button 
+                    onClick={() => setShowToxicityWarningModal(true)}
+                    className="text-yellow-500 hover:text-yellow-600 focus:outline-none"
+                    title="Content warning"
+                >
+                    <AlertTriangle className="h-5 w-5" />
+                </button>
                 )}
             </CardHeader>
             <CardContent className="p-0">
-                {showToxicity && hasToxicity && (
-                    <div className="bg-yellow-50 text-yellow-800 text-xs p-2 rounded mb-2">
-                        <p className="font-semibold">Content Warning</p>
-                        <p>Categories: {data.toxicity?.detected_categories.join(', ')}</p>
-                    </div>
-                )}
                 <p className="text-gray-700">{data.caption}</p>
                 <div className="flex items-center mt-2 text-xs text-gray-500">
                     <button 
@@ -88,6 +84,11 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data }) => {
                     </button>
                 </div>
             </CardContent>
+            <ToxicityWarningModal
+                  isOpen={showToxicityWarningModal}
+                  onClose={() => setShowToxicityWarningModal(false)}
+                  toxicityData={data.toxicity}
+                />
         </div>
     );
 };

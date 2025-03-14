@@ -11,6 +11,7 @@ import { Textarea } from '../ui/textarea';
 import avatar from "@/assets/images/avatar.png";
 import CommentCard from '../comment';
 import { checkToxicity } from '@/repository/toxicity.service'; // Import the toxicity service
+import ToxicityWarningModal from '../toxicityWarningModal';
 
 interface IPostCardProps {
     data: DocumentResponse;
@@ -18,7 +19,9 @@ interface IPostCardProps {
 
 const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
     
+    const [showToxicityWarningModal, setShowToxicityWarningModal] = React.useState(false);
     const [isVisible, setIsVisible] = React.useState(false);
+    const [showAllComments, setShowAllComments] = React.useState(false);
     const [showToxicityDetails, setShowToxicityDetails] = React.useState(false);
     const [postDisplayData, setPostDisplayData] = React.useState({
         username: data.username || "Guest_User",
@@ -31,6 +34,7 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
     const toggleVisibility = () => {
         setIsVisible(!isVisible);
     };
+
     const {user, userProfile, registerProfileUpdateListener} = useUserAuth();
     const [likesInfo, setLikesInfo] = React.useState<{
         likes: number,
@@ -202,7 +206,6 @@ React.useEffect(() => {
     
     // Filter comments that belong to this post
     const postComments = commentData.filter((item) => item.postID === data.id);
-    
     return(
         <div className="flex justify-center w-full px-2 sm:px-4">
             <div className="w-full max-w-3xl">
@@ -222,41 +225,17 @@ React.useEffect(() => {
                             
                             {/* Toxicity warning icon */}
                             {hasToxicityWarning && (
-                                <button 
-                                    onClick={() => setShowToxicityDetails(!showToxicityDetails)}
-                                    className="text-yellow-500 hover:text-yellow-600 focus:outline-none"
-                                    title="Content warning"
-                                >
-                                    <AlertTriangle className="h-5 w-5" />
-                                </button>
+                            <button 
+                                onClick={() => setShowToxicityWarningModal(true)}
+                                className="text-yellow-500 hover:text-yellow-600 focus:outline-none"
+                                title="Content warning"
+                            >
+                                <AlertTriangle className="h-5 w-5" />
+                            </button>
                             )}
                         </div>
                     </CardHeader>
                     <CardContent className="px-3 sm:px-6 pb-3">
-                        {/* Toxicity details dropdown */}
-                        {showToxicityDetails && hasToxicityWarning && (
-                            <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md text-sm">
-                                <h5 className="font-semibold mb-1">Content Warning</h5>
-                                <div className="mb-2">
-                                    <span className="font-medium">Categories: </span>
-                                    {data.toxicity?.detected_categories.join(', ')}
-                                </div>
-                                <div className="grid grid-cols-2 gap-2">
-                                    {Object.entries(data.toxicity!.results)
-                                        .filter(([_, values]) => values.probability > 0.2)
-                                        .sort((a, b) => b[1].probability - a[1].probability)
-                                        .map(([category, values]) => (
-                                            <div key={category} className="flex items-center justify-between">
-                                                <span>{category}:</span>
-                                                <span className={`font-medium ${values.is_detected ? 'text-red-600' : 'text-gray-600'}`}>
-                                                    {Math.round(values.probability * 100)}%
-                                                </span>
-                                            </div>
-                                        ))}
-                                </div>
-                            </div>
-                        )}
-                        
                         <div className="border border-sky-600 rounded p-3 sm:p-5 text-sm sm:text-base">
                             {data.caption}
                         </div>
@@ -276,9 +255,42 @@ React.useEffect(() => {
                         />
                         <div className="text-xs sm:text-sm ml-3">{likesInfo.likes} likes</div>
                     </div>
+
                     <CardFooter className="px-3 sm:px-6 pt-0 pb-3 sm:pb-6 block">
+                        {/* Display first comment always if it exists */}
+                        {postComments.length > 0 && (
+                            <div className="bg-gray-50 p-2 sm:p-3 rounded mb-2">
+                                <CommentCard data={postComments[0]} key={postComments[0].id}/>
+                                
+                                {/* Show remaining comments conditionally */}
+                                {postComments.length > 1 && showAllComments && (
+                                    <div className="mt-2 space-y-2 pt-2 border-t border-gray-200">
+                                        {postComments.slice(1).map((item) => (
+                                            <CommentCard data={item} key={item.id}/>
+                                        ))}
+                                    </div>
+                                )}
+                                
+                                {/* Conditionally show the "See more" or "Show less" button */}
+                                {postComments.length > 1 && (
+                                    <Button 
+                                        variant="ghost" 
+                                        size="sm" 
+                                        className="text-xs sm:text-sm text-sky-700 hover:text-sky-800 w-full mt-2"
+                                        onClick={() => setShowAllComments(!showAllComments)}
+                                    >
+                                        {showAllComments 
+                                            ? "Show less" 
+                                            : `See ${postComments.length - 1} more comment${postComments.length > 2 ? 's' : ''}`
+                                        }
+                                    </Button>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Comment form - only visible when toggled */}
                         {isVisible && (
-                            <div className="flex flex-col bg-gray-100 rounded w-full mt-2">
+                            <div className="flex flex-col bg-gray-100 rounded w-full">
                                 <div className="w-full">
                                     <div className="flex flex-col m-2 sm:m-3">
                                         <div className="border-radius rounded border border-gray-100 shadow-lg w-full bg-white">
@@ -304,7 +316,7 @@ React.useEffect(() => {
                                                         />
                                                     </div>
                                                     
-                                                   {/* Comment Toxicity Warning */}
+                                                    {/* Comment Toxicity Warning */}
                                                     {showCommentToxicityWarning && commentToxicity && (
                                                         <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-md text-sm">
                                                             <div className="flex items-start">
@@ -378,23 +390,21 @@ React.useEffect(() => {
                                         </div>
                                     </div>
                                 </div>
-                                {/* Render comments for this post */}
-                                {postComments.length > 0 ? (
-                                    <div className="space-y-2 px-2 sm:px-3 pb-2 sm:pb-3">
-                                        {postComments.map((item) => (
-                                            <CommentCard data={item} key={item.id}/>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="text-center p-3 text-sm text-gray-500">No comments yet</div>
-                                )}
-                            </div>  
+                            </div>
                         )}
                     </CardFooter>
                 </Card>
+
+                <ToxicityWarningModal
+                  isOpen={showToxicityWarningModal}
+                  onClose={() => setShowToxicityWarningModal(false)}
+                  toxicityData={data.toxicity}
+                />
+
             </div>
         </div>
     );
+    
 };
 
 export default PostCard;

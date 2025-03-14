@@ -1,4 +1,4 @@
-import { createBrowserRouter } from "react-router-dom";
+import { createBrowserRouter, Navigate } from "react-router-dom";
 import Login from "./pages/login";
 import Error from "./pages/error";
 import Signup from "./pages/signup";
@@ -12,44 +12,63 @@ import VerifyEmail from "./pages/emailVerification";
 export const router = createBrowserRouter([
     {
         element: <ProtectedRoutes />,
-        children:[
+        children: [
             {
                 path: "/",
                 element: <Home />,
-                errorElement:<Error />    
+                errorElement: <Error />    
             },
             {
                 path: "/post",
                 element: <CreatePost />,
-                errorElement:<Error />,
+                errorElement: <Error />,
             },
             {
                 path: "/profile",
                 element: <Profile />,
-                errorElement:<Error />,
+                errorElement: <Error />,
             },
             {
-                path: "/editProfile",
+                // Update to use URL parameters
+                path: "/editProfile/:userId",
                 element: <EditProfile />,
-                errorElement:<Error />,
+                errorElement: <Error />,
             },
+            {
+                // Add a redirect for the old route pattern (without parameters)
+                path: "/editProfile",
+                element: <Navigate to="/profile" />,
+                errorElement: <Error />,
+            },
+            {
+                // Add a catch-all route to handle 404 errors within protected routes
+                path: "*",
+                element: <Navigate to="/" />,
+                errorElement: <Error />,
+            }
         ]
     },
     {
         path: "/login",
         element: <Login />,
-        errorElement:<Error />,
+        errorElement: <Error />,
     },
     {
         path: "/signup",
         element: <Signup />,
-        errorElement:<Error />,
+        errorElement: <Error />,
     },
     {
         path: "/emailVerification",
         element: <VerifyEmail/>,
-        errorElement:<Error />,
+        errorElement: <Error />,
     },
+    {
+        // Add a catch-all route outside of protected routes
+        path: "*",
+        element: <Navigate to="/login" />,
+        errorElement: <Error />,
+    }
 ]);
 
 export default router;

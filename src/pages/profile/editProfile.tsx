@@ -5,93 +5,174 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { FileEntry, UserProfile } from '@/types';
 import * as React from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import avatar from '@/assets/images/avatar.png';
 import { Input } from '@/components/ui/input';
-import { createUserProfile, updateUserProfile } from '@/repository/user.service';
+import { createUserProfile, updateUserProfile, getUserProfile } from '@/repository/user.service';
 
 interface IEditProfileProps {}
 
 const EditProfile: React.FunctionComponent<IEditProfileProps> = () => {
-    const location = useLocation();
+    const { userId } = useParams<{ userId: string }>();
     const navigate = useNavigate();
-    const { id, userId, userBio, displayName, photoURL } = location.state;
+    const [loading, setLoading] = React.useState<boolean>(true);
     const [fileEntry, setFileEntry] = React.useState<FileEntry>({
         files: [],
     });
     const [data, setData] = React.useState<UserProfile>({
-        userId,
-        userBio,
-        displayName,
-        photoURL,
+        userId: userId || '',
+        userBio: '',
+        displayName: '',
+        photoURL: '',
     });
+    const [profileId, setProfileId] = React.useState<string>('');
+
+    // Fetch user profile when component mounts
+    React.useEffect(() => {
+        const fetchUserProfile = async () => {
+            if (!userId) {
+                navigate('/profile');
+                return;
+            }
+
+            try {
+                setLoading(true);
+                const profileData = await getUserProfile(userId);
+                
+                if (profileData) {
+                    setData({
+                        userId: userId,
+                        userBio: profileData.userBio || '',
+                        displayName: profileData.displayName || '',
+                        photoURL: profileData.photoURL || '',
+                    });
+                    
+                    // Store the profile ID for update operations
+                    if (profileData.id) {
+                        setProfileId(profileData.id);
+                    }
+                }
+            } catch (error) {
+                console.error("Error fetching user profile:", error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchUserProfile();
+    }, [userId, navigate]);
+
+    React.useEffect(() => {
+        if (fileEntry.files.length > 0 && fileEntry.files[0].cdnUrl) {
+            setData(prevData => ({
+                ...prevData,
+                photoURL: fileEntry.files[0].cdnUrl || ""
+            }));
+        }
+    }, [fileEntry]);
+
     const updateProfile = async (e: React.MouseEvent<HTMLFormElement>) => {
         e.preventDefault();
+        
+        if (!userId) {
+            console.error("User ID is missing");
+            return;
+        }
+
         try {
-            if (id) {
-                const response = await updateUserProfile(id, data);
-                console.log("The updated profile is : ", response);
+            if (profileId) {
+                // Update existing profile
+                await updateUserProfile(profileId, data);
             } else {
-                const response = await createUserProfile(data);
-                console.log("The created profile is : ", response);
+                // Create new profile
+                await createUserProfile(data);
             }
             navigate("/profile");
         } catch (err) {
-            console.log(err);
+            console.error("Error updating profile:", err);
         }
     };
-    React.useEffect(() => {
-        if (fileEntry.files.length > 0) {
-            setData({...data, photoURL: fileEntry.files[0].cdnUrl || ""});
-        }
-    }, [fileEntry]);
+
+    if (loading) {
+        return (
+            <Layout>
+                <div className='flex justify-center'>
+                    <div className='border max-w-3xl w-full p-8 text-center'>
+                        Loading profile data...
+                    </div>
+                </div>
+            </Layout>
+        );
+    }
+
     return (
         <Layout>
             <div className='flex justify-center'>
                 <div className='border max-w-3xl w-full'>
                     <h3 className='bg-slate-800 text-white text-center text-lg p-2'>
-                        EditProfile
+                        Edit Profile
                     </h3>
                     <div className='p-8'>
                         <form onSubmit={updateProfile}>  
-                        <div className="flex flex-col">
+                            <div className="flex flex-col">
                                 <Label className='mb-4' htmlFor='photo'>Profile Picture</Label>
                                 <div className="mb-4">
-                                    {fileEntry.files.length > 0 ? 
-                                    <img src={fileEntry.files[0].cdnUrl!} alt='avatar' 
-                                    className='w-35 h-35 rounded-full border-2 border-slate-800 object-center'/> : 
-                                    <img src={data.photoURL ? data.photoURL : avatar} alt='avatar' 
-                                    className='w-35 h-35 rounded-full border-2 border-slate-800 object-center'/>}
+                                    {fileEntry.files.length > 0 && fileEntry.files[0].cdnUrl ? 
+                                        <img 
+                                            src={fileEntry.files[0].cdnUrl} 
+                                            alt='avatar' 
+                                            className='w-35 h-35 rounded-full border-2 border-slate-800 object-center'
+                                        /> : 
+                                        <img 
+                                            src={data.photoURL || avatar} 
+                                            alt='avatar' 
+                                            className='w-35 h-35 rounded-full border-2 border-slate-800 object-center'
+                                        />
+                                    }
                                 </div>
                                 <FileUploader fileEntry={fileEntry} onChange={setFileEntry}/>
                             </div>
                             <div className="flex flex-col">
                                 <Label className='mb-4' htmlFor='displayName'>Display Name</Label>
-                                <Input className='mb-8'
-                                id='displayName'
-                                placeholder="Enter your username"
-                                value={data.displayName}
-                                    onChange={(e:React.ChangeEvent<HTMLInputElement>) => 
+                                <Input 
+                                    className='mb-8'
+                                    id='displayName'
+                                    placeholder="Enter your username"
+                                    value={data.displayName}
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => 
                                         setData({...data, displayName: e.target.value})
-                                }/>
+                                    }
+                                />
                             </div>
                             <div className="flex flex-col">
                                 <Label className='mb-4' htmlFor='userBio'>Profile Bio</Label>
-                                <Textarea className='mb-8'
-                                id='userBio'
-                                placeholder="Make your bio"
-                                value={data.userBio}
-                                    onChange={(e:React.ChangeEvent<HTMLTextAreaElement>) => 
+                                <Textarea 
+                                    className='mb-8'
+                                    id='userBio'
+                                    placeholder="Make your bio"
+                                    value={data.userBio}
+                                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => 
                                         setData({...data, userBio: e.target.value})
-                                }/>
+                                    }
+                                />
                             </div>
-                            <Button className='mt-4 w-32 mr-8 cursor-pointer hover:bg-sky-300 ' type='submit'>Update</Button>
-                            <Button variant="destructive" className='mt-4 w-32 mr-8 cursor-pointer hover:bg-sky-300' onClick={()=> navigate("/profile")}>Cancel</Button>
+                            <Button className='mt-4 w-32 mr-8 cursor-pointer hover:bg-sky-300' type='submit'>
+                                Update
+                            </Button>
+                            <Button 
+                                variant="destructive" 
+                                className='mt-4 w-32 mr-8 cursor-pointer hover:bg-sky-300' 
+                                onClick={() => navigate("/profile")}
+                                type="button"
+                            >
+                                Cancel
+                            </Button>
                         </form>
                     </div>
                 </div>
             </div>
-        </Layout>);
+        </Layout>
+    );
 };
 
 export default EditProfile;
