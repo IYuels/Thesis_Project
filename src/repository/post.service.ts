@@ -5,12 +5,14 @@ import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, orderBy, query, se
 const COLLECTION_NAME = "posts";
 
 export const createPost = (post: Post) => {
-  // Include toxicity data and convert date to server timestamp
+  // Include originalCaption along with toxicity data
   return addDoc(collection(db, COLLECTION_NAME), {
     ...post,
     date: serverTimestamp(),
     // Make sure toxicity is included if it exists
-    toxicity: post.toxicity || null
+    toxicity: post.toxicity || null,
+    // Include originalCaption if content was censored
+    originalCaption: post.originalCaption || null
   });
 };
 
@@ -26,6 +28,7 @@ export const getPosts = async () => {
         const responseObj: DocumentResponse = {
           id: doc.id,
           caption: data.caption || "",
+          originalCaption: data.originalCaption || null, // Add this line
           likes: data.likes || 0,
           userlikes: data.userlikes || [],
           postID: data.postID || "",

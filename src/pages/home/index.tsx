@@ -89,13 +89,14 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
     const [post, setPost] = React.useState<Post>({
         id:"",
         caption: '',
+        originalCaption: null, // Add this field
         likes: 0,
         userlikes: [],
         username: "",
         photoURL:"",
         userID: null,
         date: new Date()
-    });
+      });
 
     // Function to handle filter/sort changes
     const handleSortFilterChange = (value: string) => {
@@ -364,9 +365,13 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
         
         try {
             let postText = post.caption;
+            let originalText = null;
             
             // Determine if we need to censor the text
             if (toxicityData.is_toxic || forceCensor) {
+                // Save the original text before censoring
+                originalText = post.caption;
+                
                 // If censored_text is not available from toxicity check or is null, 
                 // explicitly call censorText service
                 if (!toxicityData.censored_text) {
@@ -379,6 +384,7 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
             const newPost: Post = {
                 ...post,
                 caption: postText, // Use censored text when appropriate
+                originalCaption: originalText, // Store original text when censored
                 userID: user.uid,
                 username: user.displayName || '',
                 photoURL: user.photoURL || '',

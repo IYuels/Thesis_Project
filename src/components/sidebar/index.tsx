@@ -27,6 +27,7 @@ const LogoutIcon = () => (
   </svg>
 );
 
+
 interface ISidebarProps {
   onClose: () => void; // Method to close sidebar
 }

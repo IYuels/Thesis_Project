@@ -8,6 +8,7 @@ import Profile from "./pages/profile";
 import ProtectedRoutes from "./components/ProtectedRoutes";
 import EditProfile from "./pages/profile/editProfile";
 import VerifyEmail from "./pages/emailVerification";
+import NotificationComponent from "./components/notification";
 
 export const router = createBrowserRouter([
     {
@@ -38,6 +39,12 @@ export const router = createBrowserRouter([
                 // Add a redirect for the old route pattern (without parameters)
                 path: "/editProfile",
                 element: <Navigate to="/profile" />,
+                errorElement: <Error />,
+            },
+            {
+                // Add notifications route
+                path: "/notifications",
+                element: <NotificationComponent />,
                 errorElement: <Error />,
             },
             {

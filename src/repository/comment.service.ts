@@ -20,14 +20,15 @@ export const getComment = async () => {
         const responseObj: DocumentResponse = {
           id: doc.id,
           caption: data.caption || "",
+          originalCaption: data.originalCaption || null, // Add this line
           likes: data.likes || 0,
           userlikes: data.userlikes || [],
           username: data.username || "",
           photoURL: data.photoURL || "",
           userID: data.userID || "",
           date: data.date || new Date(),
-          postID: data.postID || "",  // Make sure to include postID
-          toxicity: data.toxicity || null  // Include toxicity data if available
+          postID: data.postID || "",
+          toxicity: data.toxicity || null
         };
         tempArr.push(responseObj);
       });

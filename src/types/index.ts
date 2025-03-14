@@ -31,7 +31,7 @@ export interface Post {
       results: Record<string, {probability: number, is_detected: boolean}>;
     };
     // Optional field to store original caption if needed
-    originalCaption?: string;
+    originalCaption?: string | null;
 }
 
 export interface PhotoMeta {
@@ -55,7 +55,7 @@ export interface DocumentResponse {
       detected_categories: string[];
       results: Record<string, {probability: number, is_detected: boolean}>;
     } | null;
-    originalCaption?: string; // Optional field for original caption
+    originalCaption?: string | null; // Added field to store original text when censored
 }
 
 export interface ProfileInfo {
@@ -90,15 +90,36 @@ export interface Comment {
     id?: string;
     postID: string;
     caption: string;
+    originalCaption?: string | null; // Added field to store original text when censored
     likes: number;
     userlikes: string[];
     userID: string | null;
-    date: Date;
     username?: string;
     photoURL?: string;
+    date: Date;
     toxicity?: {
-      is_toxic: boolean;
-      detected_categories: string[];
-      results: Record<string, { probability: number; is_detected: boolean }>;
+        is_toxic: boolean;
+        detected_categories: string[];
+        results: Record<string, { probability: number; is_detected: boolean }>;
     } | null;
+}
+
+export enum NotificationType {
+    LIKE = 'like',
+    COMMENT = 'comment'
+  }
+  
+  export interface Notification {
+    id?: string;
+    type: NotificationType;
+    senderId: string;
+    senderName: string;
+    senderPhoto?: string;
+    recipientId: string;
+    postId: string;
+    postContent?: string;
+    commentId?: string;
+    commentContent?: string;
+    createdAt?: any;
+    read: boolean;
   }
