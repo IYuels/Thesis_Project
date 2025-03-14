@@ -557,6 +557,7 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
                                                     <div className="flex flex-col space-y-2">
                                                         <Textarea 
                                                             className="text-sm min-h-[60px] sm:min-h-[80px] resize-none"
+                                                            maxLength={1800}
                                                             id="caption"
                                                             placeholder="Write a comment"
                                                             value={comment.caption}

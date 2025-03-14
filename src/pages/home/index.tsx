@@ -473,6 +473,7 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
                                 <div className='flex flex-row min-h-[60px] w-full rounded-md bg-transparent px-2 sm:px-3 py-2 text-sm md:text-base'>
                                     <Textarea 
                                         className='mb-4 sm:mb-8 text-sm sm:text-base'
+                                        maxLength={1800}
                                         id='caption'
                                         placeholder="Share thoughts, idea, or updates"
                                         value={post.caption}
