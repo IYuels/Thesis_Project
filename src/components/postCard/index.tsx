@@ -40,8 +40,7 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
         results: Record<string, { probability: number; is_detected: boolean }>;
         censored_text?: string | null;
     } | null>(null);
-    const [setShowCommentToxicityWarning] = React.useState(false);
-    
+        
     // Determine if post has toxicity data and is toxic
     const hasToxicityWarning = data.toxicity && data.toxicity.is_toxic;
     
