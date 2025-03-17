@@ -23,10 +23,9 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
     const [hasMore, setHasMore] = React.useState(true);
     const [page, setPage] = React.useState(1);
     const [sortFilter, setSortFilter] = React.useState("latest");
-    const [allPosts, setAllPosts] = React.useState<DocumentResponse[]>([]); // Store all unfiltered posts
+    const [allPosts, setAllPosts] = React.useState<DocumentResponse[]>([]);
     const postsPerPage = 5;
     
-    // Observer for infinite scrolling
     const observer = React.useRef<IntersectionObserver | null>(null);
     const lastPostRef = React.useCallback((node: HTMLDivElement | null) => {
         if (isLoading) return;
@@ -48,23 +47,19 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
         censored_text?: string | null;
     } | null>(null);
 
-    // Debounce timeout for toxicity checking
     const toxicityTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
-    
-    // Cache for toxicity results to avoid redundant API calls
     const toxicityCache = React.useRef<Map<string, any>>(new Map());
-    
+    const toxicityCheckInProgress = React.useRef(false);
+    const lastCheckedText = React.useRef('');
 
     const getAllPost = async() => {
         setIsLoading(true);
         try {
             const response: DocumentResponse[] = await getPosts() || [];
-            // Store all posts for reference
             setAllPosts(response);
-            // Apply the current filter (this ensures consistency with the current UI state)
             applyFilterAndSort(response, sortFilter);
         } catch (error) {
-            console.error("Error fetching posts:", error);
+            // Error handling without logging
         } finally {
             setIsLoading(false);
         }
@@ -75,7 +70,6 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
             getAllPost();
         }
         
-        // Clean up any pending timeouts on component unmount
         return () => {
             if (toxicityTimeoutRef.current) {
                 clearTimeout(toxicityTimeoutRef.current);
@@ -89,40 +83,32 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
     const [post, setPost] = React.useState<Post>({
         id:"",
         caption: '',
-        originalCaption: null, // Add this field
+        originalCaption: null,
         likes: 0,
         userlikes: [],
         username: "",
         photoURL:"",
         userID: null,
         date: new Date()
-      });
+    });
 
-    // Function to handle filter/sort changes
     const handleSortFilterChange = (value: string) => {
         setSortFilter(value);
         setPage(1);
-        
-        // Apply filter to the complete dataset (allPosts)
         applyFilterAndSort(allPosts, value);
     };
     
-    // Convert any date format to timestamp for consistent comparison
     const getTimestamp = (date: any): number => {
         if (date instanceof Date) return date.getTime();
         if (date && typeof date === 'object' && 'toDate' in date) {
-            // Handle Firestore Timestamp
             return date.toDate().getTime();
         }
         if (date && typeof date.seconds === 'number') {
-            // Handle Firestore Timestamp format {seconds: number, nanoseconds: number}
             return date.seconds * 1000;
         }
-        // Try to parse as string date
         return new Date(date).getTime();
     };
     
-    // Apply filtering and sorting based on the selected option
     const applyFilterAndSort = (posts: DocumentResponse[], filter: string) => {
         if (!posts || posts.length === 0) {
             setDisplayedData([]);
@@ -130,16 +116,12 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
             return;
         }
         
-        // Create a new array to avoid mutation issues
         let filteredPosts = [...posts];
         
-        // Apply filters
         if (filter === "own" && user) {
             filteredPosts = filteredPosts.filter(post => post.userID === user.uid);
         }
-        // All other filters show all posts, so no additional filtering needed
         
-        // Apply sorting
         switch (filter) {
             case "latest":
                 filteredPosts.sort((a, b) => {
@@ -152,23 +134,18 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
                 });
                 break;
             case "mostLiked":
-                // Ensure likes is treated as a number
                 filteredPosts.sort((a, b) => (b.likes || 0) - (a.likes || 0));
                 break;
             default:
                 break;
         }
         
-        // Apply pagination for initial load
         const initialPosts = filteredPosts.slice(0, postsPerPage);
         setDisplayedData(initialPosts);
         setHasMore(filteredPosts.length > postsPerPage);
-        
-        // Store full filtered dataset for pagination
         setData(filteredPosts);
     };
     
-    // Load more posts for infinite scrolling
     const loadMorePosts = () => {
         if (!hasMore || isLoading) return;
         
@@ -177,62 +154,42 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
         const startIndex = (nextPage - 1) * postsPerPage;
         const endIndex = startIndex + postsPerPage;
         
-        // Get the next batch of posts
         const nextPosts = data.slice(startIndex, endIndex);
         
-        // Update state
         setTimeout(() => {
             setDisplayedData(prev => [...prev, ...nextPosts]);
             setPage(nextPage);
             setHasMore(endIndex < data.length);
             setIsLoading(false);
-        }, 500); // Small timeout to prevent rapid loading
+        }, 500);
     };
 
-    // Function to check toxicity with debouncing, caching, and basic client-side pre-screening
+    // Improved toxicity check function that works for all content, including single words
     const performToxicityCheck = async (text: string) => {
-        // Skip toxicity check for very short text
-        if (text.trim().length < 5) {
-            return {
-                summary: { is_toxic: false, detected_categories: [] },
-                results: {},
-                censored_text: text
-            };
-        }
+        // Removed minimum length check to allow single word checks
         
-        // Simple client-side pre-check to avoid unnecessary API calls
-        const commonOffensiveTerms = ['fuck', 'shit', 'ass', 'damn']; // Basic example
-        const lowerText = text.toLowerCase();
-        const probablyOffensive = commonOffensiveTerms.some(term => lowerText.includes(term));
-        
-        // If text is already in cache, return cached result
+        // Use cache when available
         if (toxicityCache.current.has(text)) {
             return toxicityCache.current.get(text);
         }
         
-        // If text likely contains offensive content, prioritize checking
-        if (probablyOffensive) {
-            try {
-                const result = await checkToxicity(text);
-                toxicityCache.current.set(text, result);
-                return result;
-            } catch (error) {
-                console.error("Error checking toxicity:", error);
-                return {
-                    summary: { is_toxic: false, detected_categories: [] },
-                    results: {},
-                    censored_text: text
-                };
-            }
-        }
-        
-        // Otherwise, standard API call
+        // Add timeout to prevent hanging API calls
         try {
-            const result = await checkToxicity(text);
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
+            
+            const result = await Promise.race([
+                checkToxicity(text),
+                new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error("Toxicity check timed out")), 3000)
+                )
+            ]);
+            
+            clearTimeout(timeoutId);
             toxicityCache.current.set(text, result);
             return result;
         } catch (error) {
-            console.error("Error checking toxicity:", error);
+            console.warn("Toxicity check failed or timed out, returning safe default");
             return {
                 summary: { is_toxic: false, detected_categories: [] },
                 results: {},
@@ -241,40 +198,56 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
         }
     };
 
-    // Efficient handling of caption changes with debounced toxicity checks
     const handleCaptionChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         const newText = e.target.value;
         setPost({...post, caption: newText});
         
-        // Clear any existing timeout
         if (toxicityTimeoutRef.current) {
             clearTimeout(toxicityTimeoutRef.current);
         }
         
-        // Only perform toxicity checks on substantial text to avoid unnecessary API calls
-        if (newText.trim().length > 20) {
-            // Set a debounced toxicity check
+        // Clear any existing toxicity warning when text changes significantly
+        if (toxicityWarning && Math.abs(newText.length - post.caption.length) > 5) {
+            setToxicityWarning(null);
+        }
+        
+        // Check toxicity for all content, even single words
+        // But use a short debounce to avoid excessive API calls
+        if (newText.trim() && !toxicityCheckInProgress.current && lastCheckedText.current !== newText) {
             toxicityTimeoutRef.current = setTimeout(async () => {
-                // Check cache first
-                if (!toxicityCache.current.has(newText)) {
-                    setIsCheckingToxicity(true);
+                if (toxicityCache.current.has(newText) || toxicityCheckInProgress.current) {
+                    return;
+                }
+                
+                toxicityCheckInProgress.current = true;
+                lastCheckedText.current = newText;
+                setIsCheckingToxicity(true);
+                
+                try {
                     const result = await performToxicityCheck(newText);
                     
-                    // Only update UI if toxic content is detected
-                    if (result.summary.is_toxic) {
-                        const toxicityData = {
-                            is_toxic: result.summary.is_toxic,
-                            detected_categories: result.summary.detected_categories || [],
-                            results: result.results || {},
-                            censored_text: result.censored_text
-                        };
-                        setToxicityWarning(toxicityData);
-                    } else {
-                        setToxicityWarning(null);
+                    // Only update UI if text hasn't changed while checking
+                    if (post.caption === newText) {
+                        if (result.summary.is_toxic) {
+                            const toxicityData = {
+                                is_toxic: result.summary.is_toxic,
+                                detected_categories: result.summary.detected_categories || [],
+                                results: result.results || {},
+                                censored_text: result.censored_text
+                            };
+                            setToxicityWarning(toxicityData);
+                        } else {
+                            setToxicityWarning(null);
+                        }
                     }
+                } catch (err) {
+                    // Silent error handling to prevent UI blocking
+                    setToxicityWarning(null);
+                } finally {
                     setIsCheckingToxicity(false);
+                    toxicityCheckInProgress.current = false;
                 }
-            }, 500); // 500ms debounce
+            }, 500); // Short debounce time for single word checks
         }
     };
 
@@ -282,13 +255,12 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
         e.preventDefault();
         
         if (!post.caption.trim()) {
-            return; // Don't submit empty posts
+            return;
         }
         
         setIsSubmitting(true);
         
         try {
-            // Check if this text has already been checked
             let toxicityResult;
             
             if (toxicityCache.current.has(post.caption)) {
@@ -299,65 +271,48 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
                 setIsCheckingToxicity(false);
             }
             
-            // Store toxicity results
+            // Make sure we're correctly identifying if the content is toxic
+            const isToxic = toxicityResult.summary?.is_toxic || false;
+            
             const toxicityData = {
-                is_toxic: toxicityResult.summary.is_toxic,
-                detected_categories: toxicityResult.summary.detected_categories || [],
+                is_toxic: isToxic,
+                detected_categories: toxicityResult.summary?.detected_categories || [],
                 results: toxicityResult.results || {},
                 censored_text: toxicityResult.censored_text
             };
             
-            // If toxic content is detected, show warning but don't post yet
-            if (toxicityResult.summary.is_toxic) {
-                setToxicityWarning(toxicityData);
-                setIsSubmitting(false);
-                return; // Don't post yet, user needs to confirm
-            }
-            
-            // If not toxic, create the post (with original uncensored text)
-            await createPostWithToxicityData(toxicityData, false);
+            // Pass the toxicity flag to createPostWithToxicityData
+            await createPostWithToxicityData(toxicityData, isToxic);
             
         } catch (error) {
-            console.error("Error creating post:", error);
+            console.error("Error during toxicity check:", error);
         } finally {
             setIsSubmitting(false);
         }
     };
-    
-    // Function for user to proceed with posting despite toxicity warning
-    const handlePostAnyway = async () => {
-        if (user != null && toxicityWarning) {
-            setIsSubmitting(true);
-            try {
-                // When posting anyway with toxic content, always use censored version
-                await createPostWithToxicityData(toxicityWarning, true);
-            } catch (error) {
-                console.error("Error posting anyway:", error);
-            } finally {
-                setIsSubmitting(false);
-            }
-        }
-    };
 
-    // Helper function to efficiently get censored text
+    // Improved censorText function with timeout
     const getCensoredText = async (text: string): Promise<string> => {
-        // Check cache first
         const cachedResult = toxicityCache.current.get(text);
         if (cachedResult && cachedResult.censored_text) {
             return cachedResult.censored_text;
         }
         
         try {
-            const result = await censorText(text);
+            // Add a timeout for the censor call as well
+            const result = await Promise.race([
+                censorText(text),
+                new Promise<{censored_text: string}>((resolve) => 
+                    setTimeout(() => resolve({censored_text: text}), 3000)
+                )
+            ]);
             return result.censored_text;
         } catch (error) {
-            console.error("Error censoring text:", error);
-            return text; // Return original if censoring fails
+            return text;
         }
     };
 
-    // Helper function to create post with toxicity data
-    const createPostWithToxicityData = async (toxicityData: any, forceCensor: boolean = false) => {
+    const createPostWithToxicityData = async (toxicityData: any, isToxic: boolean = false) => {
         if (user == null) {
             navigate('/login');
             return;
@@ -367,24 +322,27 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
             let postText = post.caption;
             let originalText = null;
             
-            // Determine if we need to censor the text
-            if (toxicityData.is_toxic || forceCensor) {
-                // Save the original text before censoring
+            // Debug logging to check values
+            console.log("Toxicity check result:", isToxic);
+            console.log("Toxicity data:", toxicityData);
+            
+            // If toxic content is detected, censor it
+            if (isToxic) {
                 originalText = post.caption;
                 
-                // If censored_text is not available from toxicity check or is null, 
-                // explicitly call censorText service
                 if (!toxicityData.censored_text) {
                     postText = await getCensoredText(post.caption);
+                    console.log("Censored text fetched:", postText);
                 } else {
                     postText = toxicityData.censored_text;
+                    console.log("Using provided censored text:", postText);
                 }
             }
             
             const newPost: Post = {
                 ...post,
-                caption: postText, // Use censored text when appropriate
-                originalCaption: originalText, // Store original text when censored
+                caption: postText,
+                originalCaption: originalText,
                 userID: user.uid,
                 username: user.displayName || '',
                 photoURL: user.photoURL || '',
@@ -400,10 +358,10 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
             
             await createPost(newPost);
             
-            // Reset form state
             setPost({
                 id:"",
                 caption: '',
+                originalCaption: null,
                 likes: 0,
                 userlikes: [],
                 username: "",
@@ -411,21 +369,24 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
                 userID: null,
                 date: new Date()
             });
-            setToxicityWarning(null);
             
-            // Clear the cache to avoid memory bloat
-            if (toxicityCache.current.size > 50) {
-                toxicityCache.current.clear();
+            // If you're using toxicityWarning state, make sure it's cleared
+            if (typeof setToxicityWarning === 'function') {
+                setToxicityWarning(null);
             }
             
-            // Refresh posts
+            // More efficient cache management
+            if (toxicityCache.current.size > 100) {
+                const keys = Array.from(toxicityCache.current.keys());
+                keys.slice(0, 50).forEach(key => toxicityCache.current.delete(key));
+            }
+            
             await getAllPost();
         } catch (error) {
-            console.error("Error in createPostWithToxicityData:", error);
+            console.error("Error creating post:", error);
             throw error;
         }
     };
-
     const renderPosts = () => {
         if (displayedData.length === 0 && !isLoading) {
             return (
@@ -450,7 +411,6 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
         }
         
         return displayedData.map((item, index) => {
-            // Add ref to last post for infinite scrolling
             if (index === displayedData.length - 1) {
                 return (
                     <div ref={lastPostRef} key={item.id}>
@@ -462,13 +422,48 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
             }
         });
     };
+    
+    // Add status indicator component for better user feedback
+    const ToxicityStatusIndicator = () => {
+        if (!post.caption || post.caption.trim().length < 15) {
+            return null;
+        }
+        
+        if (isCheckingToxicity) {
+            return (
+                <div className="flex items-center text-xs text-gray-500 mt-1">
+                    <svg className="animate-spin h-3 w-3 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Checking content...
+                </div>
+            );
+        }
+        
+        if (toxicityCache.current.has(post.caption)) {
+            const result = toxicityCache.current.get(post.caption);
+            if (!result.summary.is_toxic) {
+                return (
+                    <div className="flex items-center text-xs text-green-500 mt-1">
+                        <svg className="h-3 w-3 mr-1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                        </svg>
+                        Content checked
+                    </div>
+                );
+            }
+        }
+        
+        return null;
+    };
+    
     return (
         <Layout>
-            {/* Post creation card with responsive padding and width */}
             <div className='flex justify-center mb-6 md:mb-10 px-4 sm:px-6'>
                 <div className='rounded-2xl sm:rounded-3xl border border-gray-100 shadow-md sm:shadow-lg w-full max-w-3xl bg-white'>
                     <div className='p-4 sm:p-6 md:p-8'>
-                        <form onSubmit={handleSubmit}>
+                    <form onSubmit={handleSubmit}>
                             <div className="flex flex-col">
                                 <div className='flex flex-row min-h-[60px] w-full rounded-md bg-transparent px-2 sm:px-3 py-2 text-sm md:text-base'>
                                     <Textarea 
@@ -480,50 +475,10 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
                                         onChange={handleCaptionChange}
                                     />
                                 </div>
+                                <ToxicityStatusIndicator />
                             </div>
                             
-                            {/* Toxicity warning dialog */}
-                            {toxicityWarning && toxicityWarning.is_toxic && (
-                                <div className="mb-4 p-4 border border-yellow-400 bg-yellow-50 rounded-lg">
-                                    <h4 className="font-bold text-red-600 flex items-center">
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                        </svg>
-                                        Content Warning
-                                    </h4>
-                                    <p className="mt-2">Your post may contain inappropriate content:</p>
-                                    <ul className="list-disc list-inside mt-1 ml-2">
-                                        {toxicityWarning.detected_categories.map(category => (
-                                            <li key={category}>{category.replace('_', ' ')}</li>
-                                        ))}
-                                    </ul>
-                                    
-                                    {/* Show preview of censored text if available */}
-                                    {toxicityWarning.censored_text && (
-                                        <div className="mt-3 p-2 bg-white border border-gray-200 rounded">
-                                            <p className="text-sm font-medium text-gray-700">If you proceed, your post will be censored as:</p>
-                                            <p className="text-sm mt-1 italic">{toxicityWarning.censored_text}</p>
-                                        </div>
-                                    )}
-                                    
-                                    <div className="mt-3 flex gap-2">
-                                        <Button 
-                                            variant="outline" 
-                                            onClick={() => setToxicityWarning(null)}
-                                            className="border-gray-300"
-                                        >
-                                            Edit Post
-                                        </Button>
-                                        <Button 
-                                            onClick={handlePostAnyway}
-                                            className="bg-yellow-500 hover:bg-yellow-600 text-white"
-                                            disabled={isSubmitting}
-                                        >
-                                            {isSubmitting ? "Posting..." : "Post Anyway"}
-                                        </Button>
-                                    </div>
-                                </div>
-                            )}
+                            {/* Remove the toxicity warning UI block that was here */}
                             
                             <Button 
                                 className='mt-4 sm:mt-8 w-full sm:w-32 cursor-pointer hover:bg-sky-500' 
@@ -536,14 +491,12 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
                     </div>
                 </div>
             </div>
-
-            {/* News feed section with responsive layout */}
+    
             <div className='flex flex-col px-4 sm:px-6'>
                 <div className="mb-5 overflow-y-auto">
                     <div className="flex items-center justify-between mb-3 sm:mb-5">
                         <h5 className='text-xl sm:text-2xl md:text-3xl font-bold'>News Feed</h5>
                         
-                        {/* Filter/Sort Dropdown - Fixed styling to remove black background */}
                         <div className="w-40">
                             <Select value={sortFilter} onValueChange={handleSortFilterChange}>
                                 <SelectTrigger className="bg-white">
@@ -571,5 +524,5 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
         </Layout>
     );
 };
-
+    
 export default Home;

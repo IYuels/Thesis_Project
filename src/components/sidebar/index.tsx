@@ -43,6 +43,11 @@ const navItems = [
     link: '/profile', 
     icon: ProfileIcon
   },
+  {
+    name: 'Notification',
+    link: '/notifications', 
+    icon: ProfileIcon
+  },
 ];
 
 const Sidebar: React.FunctionComponent<ISidebarProps> = ({ onClose }) => {
