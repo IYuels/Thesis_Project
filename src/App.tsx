@@ -4,6 +4,7 @@ import { Toaster } from "sonner";
 import router from "./routes";
 import { UserAuthContextProvider } from "./context/userAuthContext";
 
+
 interface IAppProps {}
 
 const App: React.FunctionComponent<IAppProps> = () => {

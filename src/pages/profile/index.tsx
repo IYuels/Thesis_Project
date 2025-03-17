@@ -6,7 +6,7 @@ import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { getPostByUserID } from "@/repository/post.service";
 import { useNavigate } from "react-router-dom";
-import { getUserProfile } from "@/repository/user.service";
+import { getUserProfile, subscribeToUserProfile } from "@/repository/user.service";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import CommentCard from "@/components/comment";
 import { ChevronDownIcon, Edit2Icon, MessageCircleIcon, ThumbsUpIcon } from "lucide-react";
@@ -79,6 +79,7 @@ const Profile: React.FunctionComponent<IProfileProps> = () => {
     }, []);
 
     const getUserProfileInfo = React.useCallback(async (userId: string) => {
+        // We'll keep this function for initial data load to avoid UI flickering
         try {
             const profileData = await getUserProfile(userId);
             if (profileData) {
@@ -92,11 +93,34 @@ const Profile: React.FunctionComponent<IProfileProps> = () => {
             console.error("Error fetching user profile:", error);
         }
     }, []);
+    React.useEffect(() => {
+        let unsubscribe: () => void = () => {};
+        
+        if (user?.uid) {
+            // First, get initial data
+            getUserProfileInfo(user.uid);
+            
+            // Then subscribe to real-time updates
+            unsubscribe = subscribeToUserProfile(user.uid, (profileData) => {
+                if (profileData && Object.keys(profileData).length > 0) {
+                    setUserInfo(prev => ({
+                        ...prev,
+                        ...profileData,
+                        userId: user.uid, // Ensure userId is always set
+                    }));
+                }
+            });
+        }
+        
+        // Cleanup subscription when component unmounts
+        return () => {
+            unsubscribe();
+        };
+    }, [user, getUserProfileInfo]);
     
     React.useEffect(() => {
         // Only run if user exists and has a uid
         if (user?.uid) {
-            getUserProfileInfo(user.uid);
             getAllPost(user.uid);
         }
     }, [user, getUserProfileInfo, getAllPost]);

@@ -54,6 +54,7 @@ export function UserAuthContextProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [isEmailVerified, setIsEmailVerified] = useState<boolean>(false);
   const [profileUpdateListeners, setProfileUpdateListeners] = useState<(() => void)[]>([]);
+  
 
 
   function clearError() {

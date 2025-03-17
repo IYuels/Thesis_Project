@@ -78,7 +78,7 @@ const EditProfile: React.FunctionComponent<IEditProfileProps> = () => {
             console.error("User ID is missing");
             return;
         }
-
+    
         try {
             if (profileId) {
                 // Update existing profile
@@ -87,9 +87,16 @@ const EditProfile: React.FunctionComponent<IEditProfileProps> = () => {
                 // Create new profile
                 await createUserProfile(data);
             }
+            
+            // Optional: Add a success message
+            alert("Profile updated successfully!");
+            
+            // Navigate back to profile
             navigate("/profile");
         } catch (err) {
             console.error("Error updating profile:", err);
+            // Optional: Add an error message
+            alert("Failed to update profile. Please try again.");
         }
     };
 

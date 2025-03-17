@@ -104,22 +104,21 @@ export interface Comment {
     } | null;
 }
 
-export enum NotificationType {
-    LIKE = 'like',
-    COMMENT = 'comment'
-  }
-  
-  export interface Notification {
+export interface Notification {
     id?: string;
     type: NotificationType;
     senderId: string;
     senderName: string;
-    senderPhoto?: string;
+    senderPhoto: string;
     recipientId: string;
     postId: string;
     postContent?: string;
-    commentId?: string;
     commentContent?: string;
-    createdAt?: any;
+    createdAt?: Date | { toDate: () => Date };
     read: boolean;
+  }
+
+  export enum NotificationType {
+    LIKE = 'LIKE',
+    COMMENT = 'COMMENT',
   }

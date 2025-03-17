@@ -1,8 +1,10 @@
 import * as React from 'react';
-import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useUserAuth } from '@/context/userAuthContext';
+import { BellIcon } from 'lucide-react';
+import NotificationToast from '@/pages/notification';
 
 // SVG icons as components for optimization
 const HomeIcon = () => (
@@ -27,34 +29,17 @@ const LogoutIcon = () => (
   </svg>
 );
 
-
 interface ISidebarProps {
   onClose: () => void; // Method to close sidebar
 }
 
-const navItems = [
-  {
-    name: 'Home', 
-    link: '/', 
-    icon: HomeIcon
-  },
-  {
-    name: 'Profile',
-    link: '/profile', 
-    icon: ProfileIcon
-  },
-  {
-    name: 'Notification',
-    link: '/notifications', 
-    icon: ProfileIcon
-  },
-];
-
 const Sidebar: React.FunctionComponent<ISidebarProps> = ({ onClose }) => {
   const [isMobile, setIsMobile] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
   const { logout } = useUserAuth();
   const navigate = useNavigate();
+  const notificationButtonRef = useRef<HTMLDivElement>(null);
 
   // Track window size
   useEffect(() => {
@@ -95,54 +80,94 @@ const Sidebar: React.FunctionComponent<ISidebarProps> = ({ onClose }) => {
     }
   };
 
+  const toggleNotifications = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setShowNotifications(!showNotifications);
+  };
+
+  const navItems = [
+    {
+      name: 'Home', 
+      link: '/', 
+      icon: HomeIcon,
+      action: () => {
+        if (isMobile) onClose();
+        navigate('/');
+      }
+    },
+    {
+      name: 'Profile',
+      link: '/profile', 
+      icon: ProfileIcon,
+      action: () => {
+        if (isMobile) onClose();
+        navigate('/profile');
+      }
+    },
+    {
+      name: 'Notifications',
+      link: '#', 
+      icon: BellIcon,
+      action: toggleNotifications,
+      ref: notificationButtonRef
+    },
+  ];
+
   return (
-    <nav className="flex flex-col h-full bg-white shadow-lg">
-      <div className='flex justify-center p-5 border-b'>
-        <div className='text-black text-xl font-bold'>Thesis Project</div>
+    <nav className="flex flex-col h-full bg-white">
+      {/* Logo/App Name */}
+      <div className='flex justify-center p-6 border-b border-gray-200'>
+        <div className='text-gray-800 text-xl font-bold'>Thesis Project</div>
       </div>
       
-      <div className='flex flex-col flex-grow px-4 py-2'>
+      {/* Navigation Items */}
+      <div className='flex flex-col flex-grow px-4 py-6 space-y-4'>
         {navItems.map((item) => (
           <div 
-            className="rounded-md w-full mb-2 mt-3 hover:bg-gray-100 transition-colors"
+            className="relative"
             key={item.name}
+            ref={item.name === 'Notifications' ? notificationButtonRef : null}
           >
-            <Link 
-              to={item.link} 
-              className='flex items-center p-3'
-              onClick={() => {
-                if (isMobile) onClose();
-              }}
+            <button 
+              onClick={item.action}
+              className='w-full flex items-center p-3 rounded-lg hover:bg-gray-100 transition-all duration-200 text-gray-700 font-medium'
             >
               <span className="flex-shrink-0 mr-3 text-gray-500">
                 <item.icon />
               </span>
-              <span className="font-medium">{item.name}</span>
-            </Link>
+              <span>{item.name}</span>
+            </button>
+
+            {/* Notification tooltip positioned to the right */}
+            {item.name === 'Notifications' && showNotifications && (
+              <div className="absolute left-full ml-2 top-0 z-50">
+                <NotificationToast className="origin-top-left" />
+              </div>
+            )}
           </div>
         ))}
       </div>
       
-      <div className="mt-auto px-4 mb-6 border-t pt-4">
-        <div className="rounded-md w-full mb-2 mt-3 hover:bg-red-50 transition-colors">
-          <button 
-            className='flex items-center p-3 w-full text-left text-red-600 font-medium' 
-            onClick={handleLogout}
-            disabled={isLoggingOut}
-          >
-            <span className="flex-shrink-0 mr-3">
-              {isLoggingOut ? (
-                <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-              ) : (
-                <LogoutIcon />
-              )}
-            </span>
-            <span>{isLoggingOut ? "Logging out..." : "Logout"}</span>
-          </button>
-        </div>
+      {/* Logout Button */}
+      <div className="mt-auto px-4 mb-6 pt-4 border-t border-gray-200">
+        <button 
+          className='flex items-center p-3 w-full text-left rounded-lg hover:bg-red-50 transition-all duration-200 text-red-600 font-medium' 
+          onClick={handleLogout}
+          disabled={isLoggingOut}
+        >
+          <span className="flex-shrink-0 mr-3">
+            {isLoggingOut ? (
+              <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+            ) : (
+              <LogoutIcon />
+            )}
+          </span>
+          <span>{isLoggingOut ? "Logging out..." : "Logout"}</span>
+        </button>
       </div>
     </nav>
   );

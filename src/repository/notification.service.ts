@@ -1,110 +1,65 @@
-// src/repository/notification.service.ts
-import { addDoc, collection, query, where, getDocs, updateDoc, orderBy, Timestamp, deleteDoc, limit, doc } from 'firebase/firestore';
-import { Notification, NotificationType } from '@/types';
+import { collection, addDoc, query, where, getDocs, updateDoc, doc, orderBy, serverTimestamp, onSnapshot } from 'firebase/firestore';
+import { Notification } from '@/types';
 import { db } from '@/firebaseConfig';
 
-// Create a notification
-export const createNotification = async (notification: Notification): Promise<string> => {
+export const createNotification = async (data: Notification) => {
   try {
-    // Check if a similar notification already exists to prevent duplicates
-    // (e.g., same user liking the same post multiple times)
-    if (notification.type === NotificationType.LIKE) {
-      const existingNotifications = await checkForExistingNotification(notification);
-      if (existingNotifications[0].id) {
-        // Update the existing notification's timestamp instead of creating a new one
-        const existingNotificationId = existingNotifications[0].id;
-        const notificationRef = doc(db, 'notifications', existingNotificationId);
-        await updateDoc(notificationRef, {
-          createdAt: Timestamp.now(),
-          read: false // Mark as unread again
-        });
-        return existingNotificationId;
-      }
+    // Validate essential fields
+    if (!data.senderId || !data.recipientId || !data.type) {
+      throw new Error('Missing required notification fields');
     }
     
-    // Create a new notification
     const notificationRef = collection(db, 'notifications');
-    const docRef = await addDoc(notificationRef, {
-      ...notification,
-      createdAt: Timestamp.now(),
-      read: false
+    await addDoc(notificationRef, {
+      ...data,
+      createdAt: serverTimestamp(),
+      read: false,
     });
-    return docRef.id;
+    console.log('Notification created successfully');
   } catch (error) {
     console.error('Error creating notification:', error);
     throw error;
   }
 };
-
-// Helper function to check for existing similar notifications
-const checkForExistingNotification = async (notification: Notification): Promise<Notification[]> => {
-  try {
-    const notificationsRef = collection(db, 'notifications');
-    const q = query(
-      notificationsRef,
-      where('recipientId', '==', notification.recipientId),
-      where('senderId', '==', notification.senderId),
-      where('type', '==', notification.type),
-      where('postId', '==', notification.postId)
-    );
-    
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    })) as Notification[];
-  } catch (error) {
-    console.error('Error checking for existing notifications:', error);
-    return [];
-  }
-};
-
-// Get all notifications for a user
-export const getUserNotifications = async (userId: string, limitCount = 20): Promise<Notification[]> => {
+// Get notifications for a specific user
+export const getNotifications = async (userId: string): Promise<Notification[]> => {
   try {
     const notificationsRef = collection(db, 'notifications');
     const q = query(
       notificationsRef,
       where('recipientId', '==', userId),
-      orderBy('createdAt', 'desc'),
-      limit(limitCount)
+      orderBy('createdAt', 'desc')
     );
     
+    // Execute the query to get querySnapshot
     const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => {
+    
+    // Use type assertion with more specific type
+    const notificationsData = querySnapshot.docs.map(doc => {
       const data = doc.data();
       return {
         id: doc.id,
-        ...data,
-        createdAt: data.createdAt?.toDate() // Convert Firestore timestamp to JavaScript Date
-      };
-    }) as Notification[];
+        type: data.type,
+        senderId: data.senderId,
+        senderName: data.senderName,
+        senderPhoto: data.senderPhoto,
+        recipientId: data.recipientId,
+        postId: data.postId,
+        postContent: data.postContent,
+        commentContent: data.commentContent,
+        createdAt: data.createdAt,
+        read: data.read
+      } as Notification;
+    });
+    
+    return notificationsData;
   } catch (error) {
     console.error('Error getting notifications:', error);
-    return [];
+    throw error;
   }
 };
-
-// Get unread notifications count
-export const getUnreadNotificationsCount = async (userId: string): Promise<number> => {
-  try {
-    const notificationsRef = collection(db, 'notifications');
-    const q = query(
-      notificationsRef,
-      where('recipientId', '==', userId),
-      where('read', '==', false)
-    );
-    
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.size;
-  } catch (error) {
-    console.error('Error getting unread notifications count:', error);
-    return 0;
-  }
-};
-
-// Mark notification as read
-export const markNotificationAsRead = async (notificationId: string): Promise<void> => {
+// Mark a notification as read
+export const markNotificationAsRead = async (notificationId: string) => {
   try {
     const notificationRef = doc(db, 'notifications', notificationId);
     await updateDoc(notificationRef, {
@@ -116,8 +71,33 @@ export const markNotificationAsRead = async (notificationId: string): Promise<vo
   }
 };
 
-// Mark all notifications as read
-export const markAllNotificationsAsRead = async (userId: string): Promise<void> => {
+// Subscribe to notifications for real-time updates
+export const subscribeToNotifications = (userId: string, callback: (notifications: any[]) => void) => {
+  try {
+    const notificationsRef = collection(db, 'notifications');
+    const q = query(
+      notificationsRef,
+      where('recipientId', '==', userId),
+      orderBy('createdAt', 'desc')
+    );
+    
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const notifications = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      callback(notifications);
+    });
+    
+    return unsubscribe;
+  } catch (error) {
+    console.error('Error subscribing to notifications:', error);
+    throw error;
+  }
+};
+
+// Get unread notification count
+export const getUnreadNotificationCount = async (userId: string) => {
   try {
     const notificationsRef = collection(db, 'notifications');
     const q = query(
@@ -127,46 +107,9 @@ export const markAllNotificationsAsRead = async (userId: string): Promise<void> 
     );
     
     const querySnapshot = await getDocs(q);
-    const updatePromises = querySnapshot.docs.map(doc => 
-      updateDoc(doc.ref, { read: true })
-    );
-    
-    await Promise.all(updatePromises);
+    return querySnapshot.size;
   } catch (error) {
-    console.error('Error marking all notifications as read:', error);
+    console.error('Error getting unread notification count:', error);
     throw error;
   }
 };
-
-// Delete a notification
-export const deleteNotification = async (notificationId: string): Promise<void> => {
-  try {
-    const notificationRef = doc(db, 'notifications', notificationId);
-    await deleteDoc(notificationRef);
-  } catch (error) {
-    console.error('Error deleting notification:', error);
-    throw error;
-  }
-};
-
-// Clear all notifications for a user
-export const clearAllNotifications = async (userId: string): Promise<void> => {
-  try {
-    const notificationsRef = collection(db, 'notifications');
-    const q = query(
-      notificationsRef,
-      where('recipientId', '==', userId)
-    );
-    
-    const querySnapshot = await getDocs(q);
-    const deletePromises = querySnapshot.docs.map(doc => 
-      deleteDoc(doc.ref)
-    );
-    
-    await Promise.all(deletePromises);
-  } catch (error) {
-    console.error('Error clearing all notifications:', error);
-    throw error;
-  }
-};
-export const getNotifications = getUserNotifications;

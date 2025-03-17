@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { useState } from 'react';
 import Sidebar from '../sidebar';
+import { Analytics } from "@vercel/analytics/react"
 
 interface ILayoutProps {
     children: React.ReactNode;
@@ -46,15 +47,14 @@ const Layout: React.FunctionComponent<ILayoutProps> = ({ children }) => {
                     transition-all duration-300 ease-in-out
                     fixed md:fixed top-0 left-0 z-40 
                     h-screen 
-                    w-64
-                    border-r-2 border-gray-300 shadow-lg
+                    w-72
+                    shadow-lg
                     bg-white
                     ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
                 `}
             >
                 <Sidebar 
                     onClose={closeSidebar}
-                    // Pass logout function directly to Sidebar - removed onLogoutClick
                 />
             </div>
 
@@ -68,24 +68,20 @@ const Layout: React.FunctionComponent<ILayoutProps> = ({ children }) => {
             )}
 
             {/* Main content area with proper centering */}
-            <div className="flex-1 md:ml-64 lg:mr-64 w-full min-h-screen">
+            <div className="flex-1 md:ml-72 lg:mr-64 w-full min-h-screen">
                 <main className="p-4 sm:p-6 md:p-8 flex justify-center">
                     <div className="w-full max-w-5xl">
                         {children}
+                        <Analytics />
                     </div>
                 </main>
             </div>
 
             {/* Right sidebar - only on larger screens */}
-            <aside className="hidden lg:block border-l-2 border-gray-300 shadow-lg w-64 h-screen fixed top-0 right-0 bg-white">
-                {/* Right sidebar content goes here */}
-                <div className="p-4">
-                    <h3 className="text-lg font-medium text-gray-700"></h3>
-                    {/* Additional content */}
+            <aside className="hidden lg:block w-64 h-screen fixed top-0 right-0 bg-white shadow-lg">
+                <div className="p-6">
                 </div>
             </aside>
-
-            {/* Removed the Logout Confirmation Modal - now handled in Sidebar */}
         </div>
     );
 };

@@ -2,7 +2,7 @@ import { useUserAuth } from '@/context/userAuthContext';
 import { Comment, DocumentResponse, NotificationType } from '@/types';
 import * as React from 'react';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '../ui/card';
-import { MessageCircleMore, ThumbsUpIcon, AlertTriangle, EyeOffIcon, EyeIcon } from 'lucide-react';
+import { MessageCircleMore, ThumbsUpIcon, AlertTriangle, EyeOffIcon, EyeIcon, ClockIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { updateLikesOnPost } from '@/repository/post.service';
 import { createComment, getComment } from '@/repository/comment.service';
@@ -13,6 +13,7 @@ import avatar from "@/assets/images/avatar.png";
 import CommentCard from '../comment';
 import { checkToxicity, censorText } from '@/repository/toxicity.service';
 import ToxicityWarningModal from '../toxicityWarningModal';
+import { subscribeToUserProfile } from '@/repository/user.service';
 interface IPostCardProps {
     data: DocumentResponse;
 }
@@ -48,7 +49,7 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
         setIsVisible(!isVisible);
     };
 
-    const {user, userProfile, registerProfileUpdateListener} = useUserAuth();
+    const {user} = useUserAuth();
     const [likesInfo, setLikesInfo] = React.useState<{
         likes: number,
         isLike: boolean
@@ -57,49 +58,34 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
         isLike: data.userlikes?.includes(user!.uid) ? true : false
     });
 
-    // Profile listener management
-    const listenerRegistered = React.useRef(false);
 
     React.useEffect(() => {
-        // Only register the listener once and only if this post belongs to the current user
-        if (user && data.userID === user.uid && !listenerRegistered.current) {
-          listenerRegistered.current = true;
+        let unsubscribe = () => {};
+        
+        // Only set up listener if this post belongs to a user
+        if (data.userID) {
+          // Set initial data from the post
+          setPostDisplayData({
+            username: data.username || "Guest_User",
+            photoURL: data.photoURL || avatar
+          });
           
-          // Handle initial profile data
-          if (userProfile) {
-            setPostDisplayData({
-              username: userProfile.displayName || "Guest_User",
-              photoURL: userProfile.photoURL || avatar
-            });
-          }
-          
-          // Register listener only once
-          const unsubscribe = registerProfileUpdateListener(() => {
-            // Use functional state update to avoid dependency issues
-            if (userProfile) {
-              setPostDisplayData(prevData => {
-                // Only update if values have actually changed
-                if (prevData.username !== (userProfile.displayName || "Guest_User") || 
-                    prevData.photoURL !== (userProfile.photoURL || avatar)) {
-                  return {
-                    username: userProfile.displayName || "Guest_User",
-                    photoURL: userProfile.photoURL || avatar
-                  };
-                }
-                return prevData; // Return previous state if no changes needed
+          // Subscribe to real-time profile updates
+          unsubscribe = subscribeToUserProfile(data.userID, (profileData) => {
+            if (profileData && Object.keys(profileData).length > 0) {
+              setPostDisplayData({
+                username: profileData.displayName || "Guest_User",
+                photoURL: profileData.photoURL || avatar
               });
             }
           });
-          
-          // Clean up function
-          return () => {
-            if (unsubscribe) {
-              unsubscribe();
-              listenerRegistered.current = false;
-            }
-          };
         }
-      }, [user, data.userID]);
+        
+        // Clean up subscription when component unmounts
+        return () => {
+          unsubscribe();
+        };
+      }, [data.userID]);
 
       const toggleContentView = () => {
         const newValue = !showOriginalContent;
@@ -369,7 +355,7 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
     const postComments = commentData.filter((item) => item.postID === data.id);
 
     const handleComment = async (commentText: string) => {
-        if (data.userID !== user?.uid) {
+        if (user && data.userID && data.userID !== user.uid) {
             try {
                 if (!user) return;
                 // Use the actual comment text passed as parameter
@@ -390,34 +376,90 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
         }
     }
     
+    const formatDate = (date: Date | string | { toDate: () => Date } | undefined | null) => {
+        try {
+          if (!date) return '';
+          
+          let dateObj: Date;
+          
+          // Handle Firestore timestamp objects
+          if (typeof date === 'object' && date !== null && 'toDate' in date) {
+            dateObj = date.toDate();
+          }
+          // Handle string dates
+          else if (typeof date === 'string') {
+            dateObj = new Date(date);
+          }
+          // Handle Date objects
+          else if (date instanceof Date) {
+            dateObj = date;
+          }
+          else {
+            return '';
+          }
+          
+          // Check if valid date
+          if (isNaN(dateObj.getTime())) return '';
+          
+          // Format the date - can customize as needed
+          return dateObj.toLocaleString(undefined, { 
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          });
+        } catch (error) {
+          console.error("Error formatting date:", error);
+          return ''; // Return empty string if formatting fails
+        }
+      };
+      
+      React.useEffect(() => {
+        console.log("Comment date data:", {
+          rawDate: data.date,
+          hasDate: !!data.date,
+          typeOfDate: data.date ? typeof data.date : 'undefined'
+        });
+      }, [data]);
+    
     return(
         <div className="flex justify-center w-full px-2 sm:px-4">
             <div className="w-full max-w-3xl">
                 <Card className="mb-6 border-2 bg-white border-white shadow-lg">
-                    <CardHeader className="p-3 sm:p-6">
-                        <div className="flex justify-between items-start">
-                            <CardTitle className="text-sm flex items-center justify-start">
-                                <span className="mr-2">
-                                    <img 
-                                        src={postDisplayData.photoURL}
-                                        className="w-8 h-8 sm:w-10 sm:h-10 rounded-full border-2 border-transparent object-cover"
-                                        alt={`${postDisplayData.username}'s profile`}
-                                    />
-                                </span>
-                                <span className="text-xs sm:text-sm font-medium">{postDisplayData.username}</span>
-                            </CardTitle>
-                            
-                            {/* Toxicity warning icon */}
-                            {hasToxicityWarning && (
-                            <button 
-                                onClick={() => setShowToxicityWarningModal(true)}
-                                className="text-yellow-500 hover:text-yellow-600 focus:outline-none"
-                                title="Content warning"
-                            >
-                                <AlertTriangle className="h-5 w-5" />
-                            </button>
+                <CardHeader className="p-3 sm:p-6">
+                    <div className="flex justify-between items-start">
+                        <CardTitle className="text-sm flex items-center justify-start">
+                        <span className="mr-2">
+                            <img 
+                            src={postDisplayData.photoURL}
+                            className="w-8 h-8 sm:w-10 sm:h-10 rounded-full border-2 border-transparent object-cover"
+                            alt={`${postDisplayData.username}'s profile`}
+                            />
+                        </span>
+                        <div className="flex flex-col">
+                            <span className="text-xs sm:text-sm font-medium">{postDisplayData.username}</span>
+                            {/* Add date display with safer conditional rendering */}
+                            {data.date && (
+                            <div className="text-xs text-gray-500 flex items-center mr-2">
+                                <ClockIcon className="h-3 w-3 mr-1" />
+                                <span>{formatDate(data.date) || 'Unknown'}</span>
+                            </div>
                             )}
                         </div>
+                        </CardTitle>
+                        
+                        {/* Toxicity warning icon */}
+                        {hasToxicityWarning && (
+                        <button 
+                            onClick={() => setShowToxicityWarningModal(true)}
+                            className="text-yellow-500 hover:text-yellow-600 focus:outline-none"
+                            title="Content warning"
+                        >
+                            <AlertTriangle className="h-5 w-5" />
+                        </button>
+                        )}
+                    </div>
                     </CardHeader>
                     <CardContent className="px-3 sm:px-6 pb-3">
                         <div className="border border-sky-600 rounded p-3 sm:p-5 text-sm sm:text-base">

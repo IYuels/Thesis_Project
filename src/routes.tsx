@@ -8,7 +8,7 @@ import Profile from "./pages/profile";
 import ProtectedRoutes from "./components/ProtectedRoutes";
 import EditProfile from "./pages/profile/editProfile";
 import VerifyEmail from "./pages/emailVerification";
-import NotificationTab from "./components/notification";
+import NotificationPage from "./pages/notification";
 
 export const router = createBrowserRouter([
     {
@@ -44,7 +44,7 @@ export const router = createBrowserRouter([
             {
                 // Add notifications route
                 path: "/notifications",
-                element: <NotificationTab />,
+                element: <NotificationPage />,
                 errorElement: <Error />,
             },
             {
