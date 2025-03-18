@@ -183,9 +183,9 @@ const NotificationToast: React.FC<NotificationToastProps> = ({ className }) => {
   };
 
   return (
-    <div className={cn("relative", className)} ref={notificationRef}>
+    <div className={cn("relative h-full", className)} ref={notificationRef}>
       {isOpen && (
-        <div className="w-80 sm:w-96 bg-white rounded-lg shadow-xl z-50 overflow-hidden max-h-[80vh] border border-gray-200">
+        <div className="w-80 sm:w-96 bg-white rounded-lg shadow-xl z-50 flex flex-col h-screen max-h-screen border border-gray-200">
           <div className="p-3 border-b flex items-center justify-between bg-gray-50">
             <h3 className="font-semibold text-gray-800">Notifications</h3>
             <div className="flex space-x-2">
@@ -206,7 +206,7 @@ const NotificationToast: React.FC<NotificationToastProps> = ({ className }) => {
             </div>
           </div>
           
-          <div className={cn("overflow-y-auto", expanded ? "max-h-[70vh]" : "max-h-[60vh]")}>
+          <div className="flex-grow overflow-y-auto">
             {notifications.length === 0 ? (
               <div className="p-6 text-center text-gray-500">
                 No notifications yet
@@ -261,7 +261,7 @@ const NotificationToast: React.FC<NotificationToastProps> = ({ className }) => {
             )}
           </div>
           
-          <div className="p-2 border-t text-center bg-gray-50">
+          <div className="p-2 border-t text-center bg-gray-50 mt-auto">
             <button 
               className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center justify-center w-full"
               onClick={toggleExpand}

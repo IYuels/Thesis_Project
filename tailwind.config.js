@@ -9,6 +9,20 @@ module.exports = {
   			md: 'calc(var(--radius) - 2px)',
   			sm: 'calc(var(--radius) - 4px)'
   		},
+		  animation: {
+			'slide-up': 'slideUp 0.3s ease-out forwards',
+			'pulse': 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+		  },
+		  keyframes: {
+			slideUp: {
+			  '0%': { opacity: '0', transform: 'translateY(10px)' },
+			  '100%': { opacity: '1', transform: 'translateY(0)' },
+			},
+			pulse: {
+			  '0%, 100%': { opacity: '1' },
+			  '50%': { opacity: '.5' },
+			},
+		  },
   		colors: {
   			background: 'hsl(var(--background))',
   			foreground: 'hsl(var(--foreground))',

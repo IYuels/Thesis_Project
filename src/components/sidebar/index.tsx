@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { useUserAuth } from '@/context/userAuthContext';
 import { BellIcon } from 'lucide-react';
 import NotificationToast from '@/pages/notification';
+import { subscribeToNotifications } from '@/repository/notification.service';
 
 // SVG icons as components for optimization
 const HomeIcon = () => (
@@ -37,7 +38,8 @@ const Sidebar: React.FunctionComponent<ISidebarProps> = ({ onClose }) => {
   const [isMobile, setIsMobile] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
-  const { logout } = useUserAuth();
+  const [unreadCount, setUnreadCount] = useState(0);
+  const { logout, user } = useUserAuth();
   const navigate = useNavigate();
   const notificationButtonRef = useRef<HTMLDivElement>(null);
 
@@ -58,6 +60,24 @@ const Sidebar: React.FunctionComponent<ISidebarProps> = ({ onClose }) => {
       window.removeEventListener('resize', handleResize);
     };
   }, []);
+
+  // Get unread notification count
+  useEffect(() => {
+    let unsubscribe: () => void;
+    
+    if (user) {
+      unsubscribe = subscribeToNotifications(user.uid, (notificationsData) => {
+        const unreadNotifications = notificationsData.filter(n => !n.read).length;
+        setUnreadCount(unreadNotifications);
+      });
+    }
+    
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
+  }, [user]);
 
   const handleLogout = async () => {
     try {
@@ -110,7 +130,8 @@ const Sidebar: React.FunctionComponent<ISidebarProps> = ({ onClose }) => {
       link: '#', 
       icon: BellIcon,
       action: toggleNotifications,
-      ref: notificationButtonRef
+      ref: notificationButtonRef,
+      badge: unreadCount > 0
     },
   ];
 
@@ -137,12 +158,19 @@ const Sidebar: React.FunctionComponent<ISidebarProps> = ({ onClose }) => {
                 <item.icon />
               </span>
               <span>{item.name}</span>
+              
+              {/* Notification Badge */}
+              {item.name === 'Notifications' && unreadCount > 0 && (
+                <span className="ml-2 inline-flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-red-500 rounded-full">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
             </button>
 
-            {/* Notification tooltip positioned to the right */}
+            {/* Notification panel positioned as a fixed overlay */}
             {item.name === 'Notifications' && showNotifications && (
-              <div className="absolute left-full ml-2 top-0 z-50">
-                <NotificationToast className="origin-top-left" />
+              <div className="fixed top-0 left-0 md:left-72 bottom-0 h-full z-50">
+                <NotificationToast className="h-full" />
               </div>
             )}
           </div>
