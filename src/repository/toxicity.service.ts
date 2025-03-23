@@ -37,7 +37,7 @@ export interface ToxicityResult {
 }
 
 // Direct API URL configuration - no proxy
-const API_BASE_URL = 'https://cors-anywhere.herokuapp.com/https://thesis-api-wh7g.onrender.com';
+const API_BASE_URL = 'https://thesis-api-wh7g.onrender.com';
 
 /**
  * Enhanced toxicity check with proper error handling, timeouts,
