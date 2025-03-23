@@ -37,7 +37,7 @@ export interface ToxicityResult {
 }
 
 // Direct API URL configuration - no proxy
-const API_BASE_URL = 'https://thesis-api-wh7g.onrender.com';
+const API_BASE_URL = 'https://thesis-api-ywml.onrender.com';
 
 /**
  * Enhanced toxicity check with proper error handling, timeouts,
@@ -51,7 +51,7 @@ export const checkToxicity = async (text: string): Promise<ToxicityResult> => {
   try {
     // Create an AbortController for timeout handling
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 5 second timeout
 
     const response = await fetch(`${API_BASE_URL}/predict`, {
       method: 'POST',
