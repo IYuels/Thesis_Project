@@ -1,12 +1,12 @@
 import { useUserAuth } from '@/context/userAuthContext';
-import { Comment, DocumentResponse, NotificationType } from '@/types';
+import { Comment, DocumentResponse, NotificationType, ToxicityData, CensorLevel } from '@/types';
 import * as React from 'react';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '../ui/card';
-import { MessageCircleMore, ThumbsUpIcon, AlertTriangle, EyeOffIcon, EyeIcon, ClockIcon } from 'lucide-react';
+import { MessageCircleMore, ThumbsUpIcon, AlertTriangle, EyeOffIcon, EyeIcon, ClockIcon, ShieldAlert } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { updateLikesOnPost } from '@/repository/post.service';
 import { createComment, getComment } from '@/repository/comment.service';
-import { createNotification } from '@/repository/notification.service'; // Import the notification service
+import { createNotification } from '@/repository/notification.service';
 import { Button } from '../ui/button';
 import { Textarea } from '../ui/textarea';
 import avatar from "@/assets/images/avatar.png";
@@ -14,17 +14,21 @@ import CommentCard from '../comment';
 import { checkToxicity, censorText } from '@/repository/toxicity.service';
 import ToxicityWarningModal from '../toxicityWarningModal';
 import { subscribeToUserProfile } from '@/repository/user.service';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
 interface IPostCardProps {
     data: DocumentResponse;
 }
 
 const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
     const [showOriginalContent, setShowOriginalContent] = React.useState(false);
+    
     // Toxicity detection state and refs
     const toxicityTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
     const toxicityCache = React.useRef<Map<string, any>>(new Map());
     const [isCheckingToxicity, setIsCheckingToxicity] = React.useState(false);
     const [showToxicityWarningModal, setShowToxicityWarningModal] = React.useState(false);
+    const [censorLevel, setCensorLevel] = React.useState<CensorLevel>(CensorLevel.AUTO);
     
     // Comment state
     const [isVisible, setIsVisible] = React.useState(false);
@@ -34,16 +38,31 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
         photoURL: data.photoURL || avatar
     });
     
-    // Comment toxicity state
-    const [commentToxicity, setCommentToxicity] = React.useState<{
-        is_toxic: boolean;
-        detected_categories: string[];
-        results: Record<string, { probability: number; is_detected: boolean }>;
-        censored_text?: string | null;
-    } | null>(null);
-        
+    // Enhanced toxicity state with improved data structure
+    const [commentToxicity, setCommentToxicity] = React.useState<ToxicityData | null>(null);
+    
     // Determine if post has toxicity data and is toxic
     const hasToxicityWarning = data.toxicity && data.toxicity.is_toxic;
+    
+    // Get toxicity level
+    const getToxicityLevel = (): 'not toxic' | 'toxic' | 'very toxic' => {
+        if (!data.toxicity || !data.toxicity.is_toxic) {
+            return 'not toxic';
+        }
+        return data.toxicity.toxicity_level || 'toxic';
+    };
+    
+    // Get appropriate icon based on toxicity level
+    const getToxicityIcon = () => {
+        const level = getToxicityLevel();
+        switch (level) {
+            case 'very toxic':
+                return <ShieldAlert className="h-5 w-5 text-red-500" />;
+            case 'toxic':
+            default:
+                return <AlertTriangle className="h-5 w-5 text-yellow-500" />;
+        }
+    };
     
     const toggleVisibility = () => {
         setIsVisible(!isVisible);
@@ -57,7 +76,6 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
         likes: data.likes!,
         isLike: data.userlikes?.includes(user!.uid) ? true : false
     });
-
 
     React.useEffect(() => {
         let unsubscribe = () => {};
@@ -85,9 +103,9 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
         return () => {
           unsubscribe();
         };
-      }, [data.userID]);
+    }, [data.userID]);
 
-      const toggleContentView = () => {
+    const toggleContentView = () => {
         const newValue = !showOriginalContent;
         console.log(`Toggling content view to: ${newValue ? 'original' : 'censored'}`);
         console.log("Original content:", data.originalCaption);
@@ -96,8 +114,8 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
     };
 
     const contentToShow = showOriginalContent && data.originalCaption 
-    ? data.originalCaption
-    : data.caption;
+        ? data.originalCaption
+        : data.caption;
 
     const updateLike = async (isVal: boolean) => {
         setLikesInfo({
@@ -130,7 +148,6 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
     
         await updateLikesOnPost(data.id!, data.userlikes!, isVal ? likesInfo.likes + 1 : likesInfo.likes - 1);
     };
-    
 
     const [comment, setComment] = React.useState<Comment>({
         postID: data.id!, // Initialize with the current post ID
@@ -141,22 +158,29 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
         date: new Date()
     });
 
-    // Function to check toxicity with debouncing, caching, and basic client-side pre-screening
+    // Enhanced toxicity check function with improved error handling and caching
     const performToxicityCheck = async (text: string) => {
+        // Skip empty text check
+        if (!text.trim()) {
+            return null;
+        }
+        
         // Use cache when available
         if (toxicityCache.current.has(text)) {
             return toxicityCache.current.get(text);
         }
         
-        // Add timeout to prevent hanging API calls
         try {
+            setIsCheckingToxicity(true);
+            
+            // Add timeout to prevent hanging API calls
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
+            const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
             
             const result = await Promise.race([
                 checkToxicity(text),
                 new Promise((_, reject) => 
-                    setTimeout(() => reject(new Error("Toxicity check timed out")), 3000)
+                    setTimeout(() => reject(new Error("Toxicity check timed out")), 5000)
                 )
             ]);
             
@@ -166,14 +190,20 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
         } catch (error) {
             console.warn("Toxicity check failed or timed out, returning safe default");
             return {
-                summary: { is_toxic: false, detected_categories: [] },
+                summary: { 
+                    is_toxic: false, 
+                    toxicity_level: 'not toxic',
+                    detected_categories: [] 
+                },
                 results: {},
                 censored_text: text
             };
+        } finally {
+            setIsCheckingToxicity(false);
         }
     };
     
-    // Improved censorText function with timeout
+    // Enhanced censorText function with configurable censoring level
     const getCensoredText = async (text: string): Promise<string> => {
         const cachedResult = toxicityCache.current.get(text);
         if (cachedResult && cachedResult.censored_text) {
@@ -181,9 +211,9 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
         }
         
         try {
-            // Add a timeout for the censor call as well
+            // Add a timeout for the censor call and use selected censor level
             const result = await Promise.race([
-                censorText(text),
+                censorText(text, censorLevel),
                 new Promise<{censored_text: string}>((resolve) => 
                     setTimeout(() => resolve({censored_text: text}), 3000)
                 )
@@ -194,7 +224,7 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
         }
     };
     
-    // Updated handleCommentChange function that just checks toxicity
+    // Enhanced handleCommentChange with improved toxicity detection
     const handleCommentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         const newComment = e.target.value;
         setComment({...comment, caption: newComment});
@@ -211,28 +241,37 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
         // Skip toxicity check for empty text
         if (!newComment.trim()) {
             setIsCheckingToxicity(false);
+            setCommentToxicity(null);
             return;
         }
         
-        // Only perform debounced toxicity check, no longer showing warning UI
+        // Use debouncing to avoid excessive API calls
         toxicityTimeoutRef.current = setTimeout(async () => {
-            // Only check if not already in cache
-            if (!toxicityCache.current.has(newComment)) {
-                setIsCheckingToxicity(true);
-                try {
-                    const result = await performToxicityCheck(newComment);
-                    // Just cache the result, don't show any warnings
-                    toxicityCache.current.set(newComment, result);
-                } catch (err) {
-                    // Silent error handling
-                } finally {
-                    setIsCheckingToxicity(false);
+            setIsCheckingToxicity(true);
+            try {
+                const result = await performToxicityCheck(newComment);
+                
+                if (result && result.summary.is_toxic) {
+                    // Convert to our standardized ToxicityData format
+                    setCommentToxicity({
+                        is_toxic: result.summary.is_toxic,
+                        toxicity_level: result.summary.toxicity_level || 'toxic',
+                        detected_categories: result.summary.detected_categories || [],
+                        results: result.results || {}
+                    });
+                } else {
+                    setCommentToxicity(null);
                 }
+            } catch (err) {
+                // Silent error handling
+                setCommentToxicity(null);
+            } finally {
+                setIsCheckingToxicity(false);
             }
         }, 500);
     };
     
-    // Updated handleSubmit function that posts with toxicity handling
+    // Enhanced handleSubmit with improved toxicity handling
     const handleSubmit = async(e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         
@@ -251,26 +290,43 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
                 toxicityResult = await performToxicityCheck(comment.caption);
             }
             
-            const toxicityData = {
+            // If no toxicity result, try simple censoring as fallback
+            if (!toxicityResult) {
+                const censorResult = await censorText(comment.caption, censorLevel);
+                
+                toxicityResult = {
+                    summary: {
+                        is_toxic: censorResult.is_toxic,
+                        toxicity_level: censorResult.is_toxic ? 'toxic' : 'not toxic',
+                        detected_categories: []
+                    },
+                    results: {},
+                    censored_text: censorResult.censored_text
+                };
+            }
+            
+            // Create toxicity data in standardized format
+            const toxicityData: ToxicityData = {
                 is_toxic: toxicityResult.summary.is_toxic,
+                toxicity_level: toxicityResult.summary.toxicity_level || 'toxic',
                 detected_categories: toxicityResult.summary.detected_categories || [],
-                results: toxicityResult.results || {},
-                censored_text: toxicityResult.censored_text
+                results: toxicityResult.results || {}
             };
             
-            // Always post the comment, regardless of toxicity
+            // Post the comment with toxicity data
             await postComment(toxicityData);
             
         } catch (error) {
-            // Silent error handling
-            await postComment(null); // Post without toxicity data if check fails
+            console.error("Error checking toxicity:", error);
+            // Post without toxicity data if check fails
+            await postComment(null);
         } finally {
             setIsCheckingToxicity(false);
         }
     };
     
-    // Updated postComment function that handles toxicity internally
-    const postComment = async (toxicityData: any = null) => {
+    // Enhanced postComment with improved toxicity handling
+    const postComment = async (toxicityData: ToxicityData | null = null) => {
         if(user != null) {
             const originalText = comment.caption; // Always store the original text
             let postText = comment.caption;
@@ -280,7 +336,7 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
             if (toxicityData && toxicityData.is_toxic === true) {
                 isToxic = true;
                 
-                // If toxic, use censored text if available
+                // If toxic, use censored text if available in toxicityData
                 if (toxicityData.censored_text) {
                     postText = toxicityData.censored_text;
                 } else {
@@ -298,11 +354,7 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
                 userID: user?.uid,
                 username: user.displayName!,
                 photoURL: user.photoURL!,
-                toxicity: toxicityData ? {
-                    is_toxic: toxicityData.is_toxic,
-                    detected_categories: toxicityData.detected_categories || [],
-                    results: toxicityData.results || {}
-                } : null
+                toxicity: toxicityData
             };
             
             try {
@@ -316,15 +368,18 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
             }
         }
     };
-        React.useEffect(() => {
-            console.log("Comment processing:", {
-                caption: data.caption,
-                originalCaption: data.originalCaption,
-                isToxic: data.toxicity?.is_toxic,
-                hasDifferentContent: data.caption !== data.originalCaption,
-                toxicityData: data.toxicity
-            });
-        }, [data]);
+    
+    // Logging toxicity data for debugging
+    React.useEffect(() => {
+        console.log("Post processing:", {
+            caption: data.caption,
+            originalCaption: data.originalCaption,
+            isToxic: data.toxicity?.is_toxic,
+            toxicityLevel: data.toxicity?.toxicity_level,
+            hasDifferentContent: data.caption !== data.originalCaption,
+            toxicityData: data.toxicity
+        });
+    }, [data]);
           
     const [commentData, setData] = React.useState<Comment[]>([]);
     
@@ -376,6 +431,7 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
         }
     }
     
+    // Helper function to format date
     const formatDate = (date: Date | string | { toDate: () => Date } | undefined | null) => {
         try {
           if (!date) return '';
@@ -413,15 +469,81 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
           console.error("Error formatting date:", error);
           return ''; // Return empty string if formatting fails
         }
-      };
+    };
       
-      React.useEffect(() => {
-        console.log("Comment date data:", {
+    // Debug logging for date information
+    React.useEffect(() => {
+        console.log("Post date data:", {
           rawDate: data.date,
           hasDate: !!data.date,
           typeOfDate: data.date ? typeof data.date : 'undefined'
         });
-      }, [data]);
+    }, [data]);
+    
+    // UI for selecting censor level
+    const CensorLevelSelector = () => {
+        if (!commentToxicity) return null;
+        
+        return (
+            <div className="mt-1 mb-2">
+                <Select
+                    value={censorLevel}
+                    onValueChange={(value) => setCensorLevel(value as CensorLevel)}
+                >
+                    <SelectTrigger className="h-8 text-xs bg-white w-40">
+                        <SelectValue placeholder="Censoring level" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value={CensorLevel.AUTO}>Auto</SelectItem>
+                        <SelectItem value={CensorLevel.LIGHT}>Light</SelectItem>
+                        <SelectItem value={CensorLevel.MEDIUM}>Medium</SelectItem>
+                        <SelectItem value={CensorLevel.HEAVY}>Heavy</SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
+        );
+    };
+    
+    // Component to show toxicity status while typing
+    const CommentToxicityIndicator = () => {
+        if (isCheckingToxicity) {
+            return (
+                <div className="text-xs text-gray-500 mt-1 flex items-center">
+                    <svg className="animate-spin h-3 w-3 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Checking content...
+                </div>
+            );
+        }
+        
+        if (commentToxicity) {
+            const getIndicatorByLevel = () => {
+                switch (commentToxicity.toxicity_level) {
+                    case 'very toxic':
+                        return (
+                            <div className="text-xs text-red-500 mt-1 flex items-center">
+                                <ShieldAlert className="h-3 w-3 mr-1" />
+                                Very toxic content - will be censored
+                            </div>
+                        );
+                    case 'toxic':
+                    default:
+                        return (
+                            <div className="text-xs text-yellow-500 mt-1 flex items-center">
+                                <AlertTriangle className="h-3 w-3 mr-1" />
+                                Potentially inappropriate content - will be censored
+                            </div>
+                        );
+                }
+            };
+            
+            return getIndicatorByLevel();
+        }
+        
+        return null;
+    };
     
     return(
         <div className="flex justify-center w-full px-2 sm:px-4">
@@ -449,14 +571,14 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
                         </div>
                         </CardTitle>
                         
-                        {/* Toxicity warning icon */}
+                        {/* Enhanced toxicity warning icon based on toxicity level */}
                         {hasToxicityWarning && (
                         <button 
                             onClick={() => setShowToxicityWarningModal(true)}
-                            className="text-yellow-500 hover:text-yellow-600 focus:outline-none"
-                            title="Content warning"
+                            className="focus:outline-none"
+                            title={`Content warning: ${getToxicityLevel()}`}
                         >
-                            <AlertTriangle className="h-5 w-5" />
+                            {getToxicityIcon()}
                         </button>
                         )}
                     </div>
@@ -531,9 +653,11 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
                                                             value={comment.caption}
                                                             onChange={handleCommentChange}
                                                         />
-                                                        {isCheckingToxicity && (
-                                                            <div className="text-xs text-gray-500">Checking content...</div>
-                                                        )}
+                                                        {/* Add toxicity indicator here */}
+                                                        <CommentToxicityIndicator />
+                                                        
+                                                        {/* Add censor level selector here */}
+                                                        {commentToxicity && <CensorLevelSelector />}
                                                     </div>
                                                     
                                                     <div className="flex justify-end mt-2">
@@ -583,17 +707,15 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
                                 )}
                             </div>
                         )}
-
-                        
                     </CardFooter>
                 </Card>
 
+                {/* Updated toxicity warning modal with enhanced toxicity data */}
                 <ToxicityWarningModal
                   isOpen={showToxicityWarningModal}
                   onClose={() => setShowToxicityWarningModal(false)}
-                  toxicityData={data.toxicity}
+                  toxicityData={data.toxicity as ToxicityData}
                 />
-
             </div>
         </div>
     );

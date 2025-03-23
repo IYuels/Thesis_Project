@@ -1,7 +1,8 @@
-import { AlertTriangle, X } from 'lucide-react';
+import { AlertTriangle, X, AlertCircle, ThumbsDown } from 'lucide-react';
 import { Button } from '../ui/button';
+import { ToxicityData } from '@/types';
 
-// Modal component for toxicity warning
+// Enhanced modal component for toxicity warning
 const ToxicityWarningModal = ({ 
   isOpen, 
   onClose, 
@@ -9,18 +10,50 @@ const ToxicityWarningModal = ({
 }: { 
   isOpen: boolean; 
   onClose: () => void; 
-  toxicityData: { 
-    detected_categories: string[]; 
-    results: Record<string, { probability: number; is_detected: boolean }> 
-  } | null | undefined;
+  toxicityData: ToxicityData | null | undefined;
 }) => {
   if (!isOpen || !toxicityData) return null;
+
+  // Map toxicity level to appropriate color and icon
+  const getToxicityLevelInfo = () => {
+    if (!toxicityData.toxicity_level) {
+      return { color: 'yellow', icon: <AlertTriangle className="h-5 w-5 text-yellow-500 mr-2" /> };
+    }
+
+    switch (toxicityData.toxicity_level) {
+      case 'very toxic':
+        return { color: 'red', icon: <ThumbsDown className="h-5 w-5 text-red-500 mr-2" /> };
+      case 'toxic':
+        return { color: 'yellow', icon: <AlertTriangle className="h-5 w-5 text-yellow-500 mr-2" /> };
+      default:
+        return { color: 'blue', icon: <AlertCircle className="h-5 w-5 text-blue-500 mr-2" /> };
+    }
+  };
+
+  const { color, icon } = getToxicityLevelInfo();
+  const headerColorClass = `bg-${color}-50 border-${color}-200`;
+  
+  // Helper to get user-friendly category names
+  const getCategoryDisplayName = (category: string): string => {
+    const displayNames: Record<string, string> = {
+      'obscenity/profanity': 'Profanity',
+      'insults': 'Insults',
+      'threatening': 'Threatening Content',
+      'identity-based negativity': 'Identity Attacks',
+      'toxic': 'Toxic Content',
+      'very_toxic': 'Very Toxic Content',
+      'not_toxic': 'Non-Toxic'
+    };
+    
+    return displayNames[category] || 
+      category.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase());
+  };
 
   return (
     <>
       {/* Modal backdrop */}
       <div 
-        className="fixed inset-0 bg-transparent bg-opacity-50 z-40 flex items-center justify-center"
+        className="fixed inset-0 bg-black bg-opacity-30 z-40 flex items-center justify-center"
         onClick={onClose}
       >
         {/* Modal content - stop propagation to prevent closing when clicking inside */}
@@ -28,10 +61,17 @@ const ToxicityWarningModal = ({
           className="bg-white rounded-lg shadow-lg w-11/12 max-w-md mx-auto z-50 overflow-hidden border"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="p-4 bg-yellow-50 border-b border-yellow-200 flex justify-between items-center">
+          <div className={`p-4 ${headerColorClass} border-b flex justify-between items-center`}>
             <div className="flex items-center">
-              <AlertTriangle className="h-5 w-5 text-yellow-500 mr-2" />
-              <h3 className="font-semibold text-lg">Content Warning</h3>
+              {icon}
+              <h3 className="font-semibold text-lg">
+                Content Warning
+                {toxicityData.toxicity_level && (
+                  <span className="ml-2 text-sm font-normal">
+                    ({toxicityData.toxicity_level})
+                  </span>
+                )}
+              </h3>
             </div>
             <button 
               onClick={onClose}
@@ -42,33 +82,47 @@ const ToxicityWarningModal = ({
           </div>
           
           <div className="p-4 max-h-[70vh] overflow-y-auto">
-            <div className="mb-3">
-              <span className="font-medium">Categories: </span>
-              <span className="text-red-600">
-                {toxicityData.detected_categories.join(', ')}
-              </span>
-            </div>
+            {toxicityData.detected_categories && toxicityData.detected_categories.length > 0 && (
+              <div className="mb-3">
+                <span className="font-medium">Detected Categories: </span>
+                <span className="text-red-600">
+                  {toxicityData.detected_categories.map(cat => getCategoryDisplayName(cat)).join(', ')}
+                </span>
+              </div>
+            )}
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
-              {Object.entries(toxicityData.results)
-                .filter(([_, values]) => values.probability > 0.2)
-                .sort((a, b) => b[1].probability - a[1].probability)
+              {toxicityData.results && Object.entries(toxicityData.results)
+                .filter(([category, values]) => {
+                  // Filter out low probability items (excluding NOT_TOXIC which we always want to show)
+                  return values.probability > 0.1 || category.toUpperCase().includes("NOT_TOXIC");
+                })
+                .sort((a, b) => {
+                  // Always put NOT_TOXIC at the top, then sort by probability
+                  const aIsNotToxic = a[0].toUpperCase().includes("NOT_TOXIC");
+                  const bIsNotToxic = b[0].toUpperCase().includes("NOT_TOXIC");
+                  
+                  if (aIsNotToxic && !bIsNotToxic) return -1;
+                  if (!aIsNotToxic && bIsNotToxic) return 1;
+                  return b[1].probability - a[1].probability;
+                })
                 .map(([category, values]) => {
                   // Check if category contains NOT_TOXIC (case insensitive)
                   const isNotToxic = category.toUpperCase().includes("NOT_TOXIC");
-                  const textColorClass = isNotToxic 
-                    ? "text-gray-600" 
-                    : (values.is_detected ? "text-red-600" : "text-gray-600");
                   
-                  // Format category name for better display
-                  const formattedCategory = category
-                    .replace(/_/g, ' ')
-                    .toLowerCase()
-                    .replace(/\b\w/g, l => l.toUpperCase());
+                  // Determine text color based on probability and whether detected
+                  let textColorClass = "text-gray-600";
+                  if (!isNotToxic) {
+                    if (values.probability > 0.7) textColorClass = "text-red-600 font-bold";
+                    else if (values.probability > 0.5) textColorClass = "text-red-500";
+                    else if (values.probability > 0.3) textColorClass = "text-yellow-600";
+                  } else {
+                    textColorClass = "text-green-600";
+                  }
                   
                   return (
                     <div key={category} className="flex items-center justify-between">
-                      <span className="truncate pr-2">{formattedCategory}:</span>
+                      <span className="truncate pr-2">{getCategoryDisplayName(category)}:</span>
                       <span className={`font-medium ${textColorClass}`}>
                         {Math.round(values.probability * 100)}%
                       </span>
