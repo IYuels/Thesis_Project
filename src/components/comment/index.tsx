@@ -10,8 +10,7 @@ import {
   EyeIcon, 
   EyeOffIcon, 
   ClockIcon, 
-  AlertCircle,
-  ShieldAlert
+  AlertCircle
 } from 'lucide-react';
 import avatar from "@/assets/images/avatar.png";
 import ToxicityWarningModal from '../toxicityWarningModal';
@@ -77,7 +76,7 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data }) => {
         
         switch (level) {
             case 'very toxic':
-                return <ShieldAlert className="h-5 w-5 text-red-500" />;
+                return <AlertTriangle className="h-5 w-5 text-yellow-500" />;
             case 'toxic':
                 return <AlertTriangle className="h-5 w-5 text-yellow-500" />;
             default:
@@ -223,23 +222,24 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data }) => {
     };
     
     return (
-        <div className="bg-white rounded-lg p-4 mb-2 shadow-sm">
-            <CardHeader className="p-0 pb-2 flex flex-row justify-between">
-                <CardTitle className="text-sm flex items-center">
+        <div className="bg-white rounded-lg p-3 sm:p-4 mb-2 shadow-sm">
+            <CardHeader className="p-0 pb-2 flex flex-row justify-between items-center">
+                <CardTitle className="text-xs sm:text-sm flex items-center flex-grow overflow-hidden">
                     <img 
                         src={photoURL} 
                         alt="User avatar" 
-                        className="w-6 h-6 rounded-full mr-2" 
+                        className="w-5 h-5 sm:w-6 sm:h-6 rounded-full mr-2 flex-shrink-0" 
                     />
-                    <span>{displayName}</span>
+                    <span className="truncate max-w-[200px]">{displayName}</span>
                 </CardTitle>
                 
-                <div className="flex items-center">
-                    {/* Add date display */}
+                <div className="flex items-center space-x-2">
+                    {/* Responsive date display */}
                     {data.date && (
-                        <div className="text-xs text-gray-500 flex items-center mr-2">
+                        <div className="text-xs text-gray-500 flex items-center">
                             <ClockIcon className="h-3 w-3 mr-1" />
-                            <span>{formatDate(data.date) || 'Unknown'}</span>
+                            <span className="hidden sm:inline">{formatDate(data.date) || 'Unknown'}</span>
+                            <span className="sm:hidden">{formatDate(data.date)?.split(',')[0] || 'Unknown'}</span>
                         </div>
                     )}
                     
@@ -264,22 +264,22 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data }) => {
                     )}
                 </div>
             </CardHeader>
-            <CardContent className="p-0">
-                {/* Comment content with toxicity handling */}
-                <div>
-                    <p className="text-gray-700">
-                        {/* Show either the censored or original content */}
+            
+            <CardContent className="p-0 mt-2">
+                {/* Comment content with improved readability */}
+                <div className="break-words">
+                    <p className="text-sm sm:text-base text-gray-700">
                         <span className={getContentHighlightClass()}>
                             {contentToShow}
                         </span>
                     </p>
                 </div>
                 
-                {/* Show toggle button if we have original content */}
+                {/* Responsive toggle button for original content */}
                 {hasOriginalContent && (
                     <button 
                         onClick={toggleContentView}
-                        className="ml-2 text-xs text-gray-500 hover:text-gray-700 flex items-center mt-1"
+                        className="mt-1 text-xs text-gray-500 hover:text-gray-700 flex items-center"
                         title={showOriginalContent ? "Show censored version" : "Show original content"}
                     >
                         {showOriginalContent ? (
@@ -298,7 +298,10 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data }) => {
                 
                 <div className="flex items-center mt-2 text-xs text-gray-500">
                     <button 
-                        className={cn("flex items-center mr-2", likesInfo.isLike ? "text-blue-500" : "")}
+                        className={cn(
+                            "flex items-center", 
+                            likesInfo.isLike ? "text-blue-500" : ""
+                        )}
                         onClick={() => updateLike(!likesInfo.isLike)}
                     >
                         <ThumbsUpIcon size={14} className="mr-1" />
@@ -307,7 +310,7 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data }) => {
                 </div>
             </CardContent>
             
-            {/* Updated toxicity warning modal with enhanced toxicity data */}
+            {/* Toxicity Warning Modal */}
             <ToxicityWarningModal
                 isOpen={showToxicityWarningModal}
                 onClose={() => setShowToxicityWarningModal(false)}

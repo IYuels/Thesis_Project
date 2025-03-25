@@ -42,24 +42,39 @@ const Sidebar: React.FunctionComponent<ISidebarProps> = ({ onClose }) => {
   const { logout, user } = useUserAuth();
   const navigate = useNavigate();
   const notificationButtonRef = useRef<HTMLDivElement>(null);
+  const notificationOverlayRef = useRef<HTMLDivElement>(null);
 
   // Track window size
   useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      // Check if notifications are open
+      if (showNotifications) {
+        // Check if the click is outside both the notification button and the notification panel
+        if (
+          notificationButtonRef.current &&
+          !notificationButtonRef.current.contains(event.target as Node) &&
+          notificationOverlayRef.current &&
+          !notificationOverlayRef.current.contains(event.target as Node)
+        ) {
+          setShowNotifications(false);
+        }
+      }
+    }
     const handleResize = () => {
       setIsMobile(window.innerWidth < 768);
     };
     
     // Initial check
     handleResize();
-    
+
     // Add event listener
-    window.addEventListener('resize', handleResize);
+    document.addEventListener('mousedown', handleClickOutside);
     
     // Clean up
     return () => {
-      window.removeEventListener('resize', handleResize);
+      document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, []);
+  }, [showNotifications]);
 
   // Get unread notification count
   useEffect(() => {
@@ -169,7 +184,14 @@ const Sidebar: React.FunctionComponent<ISidebarProps> = ({ onClose }) => {
 
             {/* Notification panel positioned as a fixed overlay */}
             {item.name === 'Notifications' && showNotifications && (
-              <div className="fixed top-0 left-0 md:left-72 bottom-0 h-full z-50">
+              <div 
+                ref={notificationOverlayRef}
+                className={`
+                  fixed top-0 left-0 md:left-72 bottom-0 h-full z-50
+                  transition-transform duration-300 ease-in-out
+                  ${showNotifications ? 'translate-x-0' : 'translate-x-full'}
+                `}
+              >
                 <NotificationToast className="h-full" />
               </div>
             )}

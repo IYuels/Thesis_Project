@@ -2,7 +2,7 @@ import { useUserAuth } from '@/context/userAuthContext';
 import { Comment, DocumentResponse, NotificationType, ToxicityData, CensorLevel } from '@/types';
 import * as React from 'react';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '../ui/card';
-import { MessageCircleMore, ThumbsUpIcon, AlertTriangle, EyeOffIcon, EyeIcon, ClockIcon, ShieldAlert } from 'lucide-react';
+import { MessageCircleMore, ThumbsUpIcon, AlertTriangle, EyeOffIcon, EyeIcon, ClockIcon} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { updateLikesOnPost } from '@/repository/post.service';
 import { createComment, getComment } from '@/repository/comment.service';
@@ -57,7 +57,7 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
         const level = getToxicityLevel();
         switch (level) {
             case 'very toxic':
-                return <ShieldAlert className="h-5 w-5 text-red-500" />;
+                return <AlertTriangle className="h-5 w-5 text-yellow-500" />;
             case 'toxic':
             default:
                 return <AlertTriangle className="h-5 w-5 text-yellow-500" />;
@@ -524,7 +524,7 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
                     case 'very toxic':
                         return (
                             <div className="text-xs text-red-500 mt-1 flex items-center">
-                                <ShieldAlert className="h-3 w-3 mr-1" />
+                                <AlertTriangle className="h-3 w-3 mr-1" />
                                 Very toxic content - will be censored
                             </div>
                         );

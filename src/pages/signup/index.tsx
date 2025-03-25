@@ -92,12 +92,12 @@ const Signup: React.FunctionComponent<ISignupProps> = () => {
     <div className="w-full h-screen flex flex-col justify-center bg-slate-800">
       <div className="container mx-auto p-6 flex h-full">
         <div className="flex justify-center items-center w-full">
-          <div className="max-w-sm rounded-xl border bg-card text-card-foreground shadow-sm bg-amber-50">
+          <div className="max-w-sm rounded-xl border bg-card text-card-foreground shadow-sm bg-white">
             <Card>
               <form onSubmit={handleSubmit}>
                 <CardHeader className="space-y-1">
                   <CardTitle className="text-2xl text-center mb-4">
-                    Thesis
+                    Thesis Project
                   </CardTitle>
                   <CardDescription>
                     Enter your email below to create your account
@@ -129,7 +129,7 @@ const Signup: React.FunctionComponent<ISignupProps> = () => {
                       <span className="w-full border-t" />
                     </div>
                     <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-background bg-amber-50 px-2 text-muted-foreground">
+                      <span className="bg-background bg-white px-2 text-muted-foreground">
                         Or continue with
                       </span>
                     </div>
