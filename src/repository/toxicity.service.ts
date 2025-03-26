@@ -37,7 +37,7 @@ export interface ToxicityResult {
 }
 
 // Direct API URL configuration - no proxy
-const API_BASE_URL = 'https://thesis-api-ywml.onrender.com';
+const API_BASE_URL = 'https://final-final-uimo.onrender.com';
 
 /**
  * Enhanced toxicity check with proper error handling, timeouts,
