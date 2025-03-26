@@ -1,10 +1,10 @@
 import { useUserAuth } from '@/context/userAuthContext';
 import { Comment, DocumentResponse, NotificationType, ToxicityData, CensorLevel } from '@/types';
 import * as React from 'react';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '../ui/card';
-import { MessageCircleMore, ThumbsUpIcon, AlertTriangle, EyeOffIcon, EyeIcon, ClockIcon} from 'lucide-react';
+import { Card, CardContent, CardFooter, CardHeader } from '../ui/card';
+import { MessageCircleMore, ThumbsUpIcon, AlertTriangle, EyeOffIcon, EyeIcon, ClockIcon, X} from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { updateLikesOnPost } from '@/repository/post.service';
+import { deletePost, updateLikesOnPost } from '@/repository/post.service';
 import { createComment, getComment } from '@/repository/comment.service';
 import { createNotification } from '@/repository/notification.service';
 import { Button } from '../ui/button';
@@ -15,6 +15,7 @@ import { checkToxicity, censorText } from '@/repository/toxicity.service';
 import ToxicityWarningModal from '../toxicityWarningModal';
 import { subscribeToUserProfile } from '@/repository/user.service';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { toast } from 'sonner';
 
 interface IPostCardProps {
     data: DocumentResponse;
@@ -434,40 +435,48 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
     // Helper function to format date
     const formatDate = (date: Date | string | { toDate: () => Date } | undefined | null) => {
         try {
-          if (!date) return '';
-          
-          let dateObj: Date;
-          
-          // Handle Firestore timestamp objects
-          if (typeof date === 'object' && date !== null && 'toDate' in date) {
-            dateObj = date.toDate();
-          }
-          // Handle string dates
-          else if (typeof date === 'string') {
-            dateObj = new Date(date);
-          }
-          // Handle Date objects
-          else if (date instanceof Date) {
-            dateObj = date;
-          }
-          else {
-            return '';
-          }
-          
-          // Check if valid date
-          if (isNaN(dateObj.getTime())) return '';
-          
-          // Format the date - can customize as needed
-          return dateObj.toLocaleString(undefined, { 
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-          });
+            if (!date) return '';
+            
+            let dateObj: Date;
+            
+            // Handle Firestore timestamp objects
+            if (typeof date === 'object' && date !== null && 'toDate' in date) {
+                dateObj = date.toDate();
+            }
+            // Handle string dates
+            else if (typeof date === 'string') {
+                dateObj = new Date(date);
+            }
+            // Handle Date objects
+            else if (date instanceof Date) {
+                dateObj = date;
+            }
+            else {
+                return '';
+            }
+            
+            // Check if valid date
+            if (isNaN(dateObj.getTime())) return '';
+            
+            // Explicitly format to mm/dd/yyyy HH:MM AM/PM
+            const month = (dateObj.getMonth() + 1).toString().padStart(2, '0');
+            const day = dateObj.getDate().toString().padStart(2, '0');
+            const year = dateObj.getFullYear();
+            
+            // Format time with 12-hour clock and AM/PM
+            let hours = dateObj.getHours();
+            const minutes = dateObj.getMinutes().toString().padStart(2, '0');
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            
+            // Convert to 12-hour format
+            hours = hours % 12;
+            hours = hours ? hours : 12; // handle midnight (0 hours)
+            const formattedHours = hours.toString().padStart(2, '0');
+            
+            return `${month}/${day}/${year} ${formattedHours}:${minutes} ${ampm}`;
         } catch (error) {
-          console.error("Error formatting date:", error);
-          return ''; // Return empty string if formatting fails
+            console.error("Error formatting date:", error);
+            return ''; // Return empty string if formatting fails
         }
     };
       
@@ -544,180 +553,207 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
         
         return null;
     };
+    const handleDeletePost = async () => {
+        // Confirm deletion
+        const confirmDelete = window.confirm("Are you sure you want to delete this post?");
+        
+        if (confirmDelete && user?.uid === data.userID) {
+            try {
+                await deletePost(data.id!);
+                // Optional: Show a toast/notification
+                toast.success("Post deleted successfully");
+                window.location.reload(); // Refresh the page after deletion
+            } catch (error) {
+                console.error("Failed to delete post:", error);
+                toast.error("Failed to delete post");
+            }
+        }
+    };
+    console.log("Current User:", user);
+    console.log("Post User ID:", data.userID);
+    console.log("User Match:", user?.uid === data.userID);
     
     return(
         <div className="flex justify-center w-full px-2 sm:px-4">
-            <div className="w-full max-w-3xl">
-                <Card className="mb-6 border-2 bg-white border-white shadow-lg">
-                <CardHeader className="p-3 sm:p-6">
-                    <div className="flex justify-between items-start">
-                        <CardTitle className="text-sm flex items-center justify-start">
+            <div className="flex justify-center w-full px-2 sm:px-4">
+    <div className="w-full max-w-3xl">
+        <Card className="mb-6 border-2 bg-white border-white shadow-lg">
+            <CardHeader className="p-3 sm:p-6">
+                <div className="flex flex-col sm:flex-row justify-between items-center">
+                    <div className="flex items-center w-full">
                         <span className="mr-2">
                             <img 
-                            src={postDisplayData.photoURL}
-                            className="w-8 h-8 sm:w-10 sm:h-10 rounded-full border-2 border-transparent object-cover"
-                            alt={`${postDisplayData.username}'s profile`}
+                                src={postDisplayData.photoURL}
+                                className="w-8 h-8 sm:w-10 sm:h-10 rounded-full border-2 border-transparent object-cover"
+                                alt={`${postDisplayData.username}'s profile`}
                             />
                         </span>
                         <div className="flex flex-col">
                             <span className="text-xs sm:text-sm font-medium">{postDisplayData.username}</span>
-                            {/* Add date display with safer conditional rendering */}
                             {data.date && (
-                            <div className="text-xs text-gray-500 flex items-center mr-2">
-                                <ClockIcon className="h-3 w-3 mr-1" />
-                                <span>{formatDate(data.date) || 'Unknown'}</span>
-                            </div>
+                                <div className="text-xs text-gray-500 flex items-center">
+                                    <ClockIcon className="h-3 w-3 mr-1" />
+                                    <span>
+                                        {formatDate(data.date)}
+                                    </span>
+                                </div>
                             )}
                         </div>
-                        </CardTitle>
-                        
-                        {/* Enhanced toxicity warning icon based on toxicity level */}
+                    </div>
+                    
+                    <div className="flex items-center space-x-2 ml-auto">
                         {hasToxicityWarning && (
-                        <button 
-                            onClick={() => setShowToxicityWarningModal(true)}
-                            className="focus:outline-none"
-                            title={`Content warning: ${getToxicityLevel()}`}
-                        >
-                            {getToxicityIcon()}
-                        </button>
+                            <button 
+                                onClick={() => setShowToxicityWarningModal(true)}
+                                className="focus:outline-none"
+                                title={`Content warning: ${getToxicityLevel()}`}
+                            >
+                                {getToxicityIcon()}
+                            </button>
+                        )}
+                        
+                        {user?.uid === data.userID && (
+                            <button
+                                onClick={handleDeletePost}
+                                className="focus:outline-none text-red-500" 
+                            >
+                                <X className="h-4 w-4" />
+                            </button>
                         )}
                     </div>
-                    </CardHeader>
-                    <CardContent className="px-3 sm:px-6 pb-3">
-                        <div className="border border-sky-600 rounded p-3 sm:p-5 text-sm sm:text-base">
-                            {/* Update this section to handle toxicity and original content */}
-                            {hasToxicityWarning ? (
-                                <div>
-                                    <div className="flex items-center mb-1">  
-                                        {/* Add toggle button if we have original content */}
-                                        {data.originalCaption && (
-                                            <button 
-                                                onClick={toggleContentView}
-                                                className="ml-2 text-xs text-gray-500 hover:text-gray-700 flex items-center"
-                                                title={showOriginalContent ? "Show censored version" : "Show original content"}
-                                            >
-                                                {showOriginalContent ? (
-                                                    <>
-                                                        <EyeOffIcon className="h-3 w-3 mr-1" />
-                                                        <span>Hide</span>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <EyeIcon className="h-3 w-3 mr-1" />
-                                                        <span>Show original</span>
-                                                    </>
-                                                )}
-                                            </button>
-                                        )}
-                                    </div>
-                                    <div className={showOriginalContent ? "bg-yellow-50 p-1 rounded" : ""}>
-                                        {contentToShow}
-                                    </div>
-                                </div>
-                            ) : (
-                                data.caption
-                            )}
-                        </div>
-                    </CardContent>
-                    <div className="flex flex-row items-center px-3 sm:px-6 pb-2">
-                        <ThumbsUpIcon 
-                            className={cn(
-                                "w-5 h-5 sm:w-6 sm:h-6 mr-2 sm:mr-3",
-                                "cursor-pointer", 
-                                likesInfo.isLike ? "fill-blue-500" : "fill-none"
-                            )}
-                            onClick={() => updateLike(!likesInfo.isLike)}
-                        />
-                        <MessageCircleMore 
-                            className="w-5 h-5 sm:w-6 sm:h-6 cursor-pointer" 
-                            onClick={toggleVisibility}
-                        />
-                        <div className="text-xs sm:text-sm ml-3">{likesInfo.likes} likes</div>
-                    </div>
-
-                    <CardFooter className="px-3 sm:px-6 pt-0 pb-3 sm:pb-6 block">
-                        {/* Comment form - only visible when toggled */}
-                        {isVisible && (
-                            <div className="flex flex-col bg-gray-100 rounded w-full">
-                                <div className="w-full">
-                                    <div className="flex flex-col m-2 sm:m-3">
-                                        <div className="border-radius rounded border border-gray-100 shadow-lg w-full bg-white">
-                                            <div className="p-2 sm:p-3">
-                                            <form onSubmit={handleSubmit}>
-                                                    <div className="flex flex-col space-y-2">
-                                                        <Textarea 
-                                                            className="text-sm min-h-[60px] sm:min-h-[80px] resize-none"
-                                                            maxLength={1800}
-                                                            id="caption"
-                                                            placeholder="Write a comment"
-                                                            value={comment.caption}
-                                                            onChange={handleCommentChange}
-                                                        />
-                                                        {/* Add toxicity indicator here */}
-                                                        <CommentToxicityIndicator />
-                                                        
-                                                        {/* Add censor level selector here */}
-                                                        {commentToxicity && <CensorLevelSelector />}
-                                                    </div>
-                                                    
-                                                    <div className="flex justify-end mt-2">
-                                                        <Button 
-                                                            className="text-xs sm:text-sm py-1 px-3 h-8 cursor-pointer hover:bg-sky-500" 
-                                                            type="submit"
-                                                            disabled={isCheckingToxicity || comment.caption?.trim() === ''}
-                                                        >
-                                                            {isCheckingToxicity ? 'Checking...' : 'Post'}
-                                                        </Button>
-                                                    </div>
-                                                </form>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Display first comment always if it exists */}
-                        {postComments.length > 0 && (
-                            <div className="bg-gray-50 p-2 sm:p-3 rounded mb-2">
-                                <CommentCard data={postComments[0]} key={postComments[0].id}/>
-                                
-                                {/* Show remaining comments conditionally */}
-                                {postComments.length > 1 && showAllComments && (
-                                    <div className="mt-2 space-y-2 pt-2 border-t border-gray-200">
-                                        {postComments.slice(1).map((item) => (
-                                            <CommentCard data={item} key={item.id}/>
-                                        ))}
-                                    </div>
-                                )}
-                                
-                                {/* Conditionally show the "See more" or "Show less" button */}
-                                {postComments.length > 1 && (
-                                    <Button 
-                                        variant="ghost" 
-                                        size="sm" 
-                                        className="text-xs sm:text-sm text-sky-700 hover:text-sky-800 w-full mt-2"
-                                        onClick={() => setShowAllComments(!showAllComments)}
+                </div>
+            </CardHeader>
+            
+            <CardContent className="px-3 sm:px-6 pb-3">
+                <div className="border border-sky-600 rounded p-3 sm:p-5 text-sm sm:text-base">
+                    {hasToxicityWarning ? (
+                        <div>
+                            <div className="flex flex-wrap items-center mb-1 space-x-2">  
+                                {data.originalCaption && (
+                                    <button 
+                                        onClick={toggleContentView}
+                                        className="text-xs text-gray-500 hover:text-gray-700 flex items-center"
+                                        title={showOriginalContent ? "Show censored version" : "Show original content"}
                                     >
-                                        {showAllComments 
-                                            ? "Show less" 
-                                            : `See ${postComments.length - 1} more comment${postComments.length > 2 ? 's' : ''}`
-                                        }
-                                    </Button>
+                                        {showOriginalContent ? (
+                                            <>
+                                                <EyeOffIcon className="h-3 w-3 mr-1" />
+                                                <span>Hide</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <EyeIcon className="h-3 w-3 mr-1" />
+                                                <span>Show original</span>
+                                            </>
+                                        )}
+                                    </button>
                                 )}
                             </div>
+                            <div className={showOriginalContent ? "bg-yellow-50 p-1 rounded" : ""}>
+                                {contentToShow}
+                            </div>
+                        </div>
+                    ) : (
+                        data.caption
+                    )}
+                </div>
+            </CardContent>
+            
+            <div className="flex flex-row items-center justify-between px-3 sm:px-6 pb-2">
+                <div className="flex items-center space-x-2">
+                    <ThumbsUpIcon 
+                        className={cn(
+                            "w-5 h-5 sm:w-6 sm:h-6",
+                            "cursor-pointer", 
+                            likesInfo.isLike ? "fill-blue-500" : "fill-none"
                         )}
-                    </CardFooter>
-                </Card>
-
-                {/* Updated toxicity warning modal with enhanced toxicity data */}
-                <ToxicityWarningModal
-                  isOpen={showToxicityWarningModal}
-                  onClose={() => setShowToxicityWarningModal(false)}
-                  toxicityData={data.toxicity as ToxicityData}
-                />
+                        onClick={() => updateLike(!likesInfo.isLike)}
+                    />
+                    <MessageCircleMore 
+                        className="w-5 h-5 sm:w-6 sm:h-6 cursor-pointer" 
+                        onClick={toggleVisibility}
+                    />
+                    <div className="text-xs sm:text-sm">{likesInfo.likes} likes</div>
+                </div>
             </div>
-        </div>
+
+            <CardFooter className="px-3 sm:px-6 pt-0 pb-3 sm:pb-6 block">
+                {isVisible && (
+                    <div className="flex flex-col bg-gray-100 rounded w-full">
+                        <div className="w-full">
+                            <div className="m-2 sm:m-3">
+                                <div className="rounded border border-gray-100 shadow-lg bg-white">
+                                    <div className="p-2 sm:p-3">
+                                        <form onSubmit={handleSubmit}>
+                                            <div className="space-y-2">
+                                                <Textarea 
+                                                    className="text-sm min-h-[60px] sm:min-h-[80px] resize-none w-full"
+                                                    maxLength={1800}
+                                                    id="caption"
+                                                    placeholder="Write a comment"
+                                                    value={comment.caption}
+                                                    onChange={handleCommentChange}
+                                                />
+                                                <CommentToxicityIndicator />
+                                                
+                                                {commentToxicity && <CensorLevelSelector />}
+                                                
+                                                <div className="flex justify-end">
+                                                    <Button 
+                                                        className="text-xs sm:text-sm py-1 px-3 h-8 cursor-pointer hover:bg-sky-500" 
+                                                        type="submit"
+                                                        disabled={isCheckingToxicity || comment.caption?.trim() === ''}
+                                                    >
+                                                        {isCheckingToxicity ? 'Checking...' : 'Post'}
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {postComments.length > 0 && (
+                    <div className="bg-gray-50 p-2 sm:p-3 rounded mb-2">
+                        <CommentCard data={postComments[0]} key={postComments[0].id}/>
+                        
+                        {postComments.length > 1 && showAllComments && (
+                            <div className="mt-2 space-y-2 pt-2 border-t border-gray-200">
+                                {postComments.slice(1).map((item) => (
+                                    <CommentCard data={item} key={item.id}/>
+                                ))}
+                            </div>
+                        )}
+                        
+                        {postComments.length > 1 && (
+                            <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="text-xs sm:text-sm text-sky-700 hover:text-sky-800 w-full mt-2"
+                                onClick={() => setShowAllComments(!showAllComments)}
+                            >
+                                {showAllComments 
+                                    ? "Show less" 
+                                    : `See ${postComments.length - 1} more comment${postComments.length > 2 ? 's' : ''}`
+                                }
+                            </Button>
+                        )}
+                    </div>
+                )}
+            </CardFooter>
+        </Card>
+
+        <ToxicityWarningModal
+            isOpen={showToxicityWarningModal}
+            onClose={() => setShowToxicityWarningModal(false)}
+            toxicityData={data.toxicity as ToxicityData}
+        />
+    </div>
+</div>
+</div>
     );
 };
 

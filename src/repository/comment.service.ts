@@ -53,9 +53,15 @@ export const getPost = (id: string) => {
   return getDoc(docRef);
 }
 
-export const deletePost = (id: string) => {
-  return deleteDoc(doc(db, COLLECTION_NAME, id));
-}
+export const deleteComment = async (commentId: string) => {
+  try {
+    await deleteDoc(doc(db, 'comments', commentId));
+    return true;
+  } catch (error) {
+    console.error("Error deleting comment:", error);
+    throw error;
+  }
+};
 
 // Renamed from updateLikesOnPost to updateLikesOnComment for clarity
 export const updateLikesOnComment = async (id: string, userlikes: string[], likes: number) => {

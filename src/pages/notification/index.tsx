@@ -16,7 +16,7 @@ const NotificationToast: React.FC<NotificationToastProps> = ({ className }) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isOpen, setIsOpen] = useState(true); // Always open when shown from sidebar
-  const [expanded, setExpanded] = useState(false); // New state for expanded view
+  const [expanded] = useState(false); // New state for expanded view
   const { user } = useUserAuth();
   const navigate = useNavigate();
   const notificationRef = React.useRef<HTMLDivElement>(null);
@@ -177,11 +177,6 @@ const NotificationToast: React.FC<NotificationToastProps> = ({ className }) => {
 
   const displayNotifications = expanded ? sortedNotifications : sortedNotifications.slice(0, 10);
 
-  // Handle toggle expand without using imported icons that might be causing issues
-  const toggleExpand = () => {
-    setExpanded(!expanded);
-  };
-
   return (
     <div className={cn("relative h-full", className)} ref={notificationRef}>
       {isOpen && (
@@ -259,29 +254,6 @@ const NotificationToast: React.FC<NotificationToastProps> = ({ className }) => {
                 );
               })
             )}
-          </div>
-          
-          <div className="p-2 border-t text-center bg-gray-50 mt-auto">
-            <button 
-              className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center justify-center w-full"
-              onClick={toggleExpand}
-            >
-              {expanded ? (
-                <>
-                  <span>Show less</span>
-                  <svg className="ml-1 h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="18 15 12 9 6 15"></polyline>
-                  </svg>
-                </>
-              ) : (
-                <>
-                  <span>View all notifications</span>
-                  <svg className="ml-1 h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="6 9 12 15 18 9"></polyline>
-                  </svg>
-                </>
-              )}
-            </button>
           </div>
         </div>
       )}

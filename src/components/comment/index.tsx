@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useUserAuth } from '@/context/userAuthContext';
 import { Comment, ToxicityData } from '@/types';
-import { updateLikesOnComment } from '@/repository/comment.service';
+import { deleteComment, updateLikesOnComment } from '@/repository/comment.service';
 import { cn } from '@/lib/utils';
 import { CardContent, CardHeader, CardTitle } from '../ui/card';
 import { 
@@ -10,18 +10,21 @@ import {
   EyeIcon, 
   EyeOffIcon, 
   ClockIcon, 
-  AlertCircle
+  AlertCircle,
+  X
 } from 'lucide-react';
 import avatar from "@/assets/images/avatar.png";
 import ToxicityWarningModal from '../toxicityWarningModal';
 import { subscribeToUserProfile } from '@/repository/user.service';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
+import { toast } from 'sonner';
 
 interface ICommentCardProps {
     data: Comment;
+    onDelete?: () => void;
 }
 
-const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data }) => {
+const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data, onDelete }) => {
     const [showToxicityWarningModal, setShowToxicityWarningModal] = React.useState(false);
     const { user, userProfile } = useUserAuth();
     const [showOriginalContent, setShowOriginalContent] = React.useState(false);
@@ -188,14 +191,17 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data }) => {
           // Check if valid date
           if (isNaN(dateObj.getTime())) return '';
           
-          // Format the date - can customize as needed
-          return dateObj.toLocaleString(undefined, { 
+          // Format the date in mm/dd/yyyy 00:00 format
+          const formattedDate = dateObj.toLocaleString(undefined, { 
+            month: '2-digit',
+            day: '2-digit',
             year: 'numeric',
-            month: 'short',
-            day: 'numeric',
             hour: '2-digit',
-            minute: '2-digit'
-          });
+            minute: '2-digit',
+            hour12: false
+          }).replace(',', ' ');
+          
+          return formattedDate;
         } catch (error) {
           console.error("Error formatting date:", error);
           return ''; // Return empty string if formatting fails
@@ -220,10 +226,33 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data }) => {
                 return "Content Warning - Click for details";
         }
     };
+
+    const handleDeleteComment = async () => {
+        // Confirm deletion
+        const confirmDelete = window.confirm("Are you sure you want to delete this comment?");
+        
+        if (confirmDelete && user?.uid === data.userID) {
+            try {
+                await deleteComment(data.id!);
+                
+                // Call optional parent component callback
+                if (onDelete) {
+                    onDelete();
+                }
+                
+                // Show success toast
+                toast.success("Comment deleted successfully");
+                window.location.reload(); // Refresh the page after deletion
+            } catch (error) {
+                console.error("Failed to delete comment:", error);
+                toast.error("Failed to delete comment");
+            }
+        }
+    };
     
     return (
         <div className="bg-white rounded-lg p-3 sm:p-4 mb-2 shadow-sm">
-            <CardHeader className="p-0 pb-2 flex flex-row justify-between items-center">
+<CardHeader className="p-0 pb-2 flex flex-row justify-between items-center">
                 <CardTitle className="text-xs sm:text-sm flex items-center flex-grow overflow-hidden">
                     <img 
                         src={photoURL} 
@@ -234,16 +263,15 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data }) => {
                 </CardTitle>
                 
                 <div className="flex items-center space-x-2">
-                    {/* Responsive date display */}
+                    {/* Date display remains the same */}
                     {data.date && (
                         <div className="text-xs text-gray-500 flex items-center">
                             <ClockIcon className="h-3 w-3 mr-1" />
-                            <span className="hidden sm:inline">{formatDate(data.date) || 'Unknown'}</span>
-                            <span className="sm:hidden">{formatDate(data.date)?.split(',')[0] || 'Unknown'}</span>
+                            <span>{formatDate(data.date) || 'Unknown'}</span>
                         </div>
                     )}
                     
-                    {/* Enhanced toxicity indicator with tooltip */}
+                    {/* Toxicity indicator remains the same */}
                     {hasToxicity && (
                         <TooltipProvider>
                             <Tooltip>
@@ -262,11 +290,22 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data }) => {
                             </Tooltip>
                         </TooltipProvider>
                     )}
+
+                    {/* New delete button, visible only to comment owner */}
+                    {user?.uid === data.userID && (
+                        <button
+                            onClick={handleDeleteComment}
+                            className="focus:outline-none text-red-500" 
+                            title="Delete comment"
+                        >
+                            <X className="h-4 w-4" />
+                        </button>
+                    )}
                 </div>
             </CardHeader>
-            
+
             <CardContent className="p-0 mt-2">
-                {/* Comment content with improved readability */}
+                {/* Mobile-friendly comment content */}
                 <div className="break-words">
                     <p className="text-sm sm:text-base text-gray-700">
                         <span className={getContentHighlightClass()}>
@@ -296,10 +335,11 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data }) => {
                     </button>
                 )}
                 
+                {/* Likes section with improved touch target */}
                 <div className="flex items-center mt-2 text-xs text-gray-500">
                     <button 
                         className={cn(
-                            "flex items-center", 
+                            "flex items-center p-1 -m-1 rounded-full hover:bg-gray-100 transition-colors", 
                             likesInfo.isLike ? "text-blue-500" : ""
                         )}
                         onClick={() => updateLike(!likesInfo.isLike)}
@@ -319,5 +359,6 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data }) => {
         </div>
     );
 };
+
 
 export default CommentCard;

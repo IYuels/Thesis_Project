@@ -1,6 +1,6 @@
 import { db } from "@/firebaseConfig";
 import { DocumentResponse, Post, ProfileInfo } from "@/types";
-import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, orderBy, query, serverTimestamp, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, orderBy, query, serverTimestamp, updateDoc, where, writeBatch } from "firebase/firestore";
 
 const COLLECTION_NAME = "posts";
 
@@ -61,9 +61,32 @@ export const getPost = (id: string) => {
   return getDoc(docRef);
 }
 
-export const deletePost = (id: string) => {
-  return deleteDoc(doc(db, COLLECTION_NAME, id));
-}
+export const deletePost = async (postId: string) => {
+  try {
+    // Delete the post document
+    await deleteDoc(doc(db, 'posts', postId));
+    
+    // Optional: Delete associated comments
+    const commentsQuery = query(
+      collection(db, 'comments'), 
+      where('postID', '==', postId)
+    );
+    
+    const commentsSnapshot = await getDocs(commentsQuery);
+    
+    const batch = writeBatch(db);
+    commentsSnapshot.docs.forEach(document => {
+      batch.delete(document.ref);
+    });
+    
+    await batch.commit();
+    
+    return true;
+  } catch (error) {
+    console.error("Error deleting post:", error);
+    throw error;
+  }
+};
 
 export const updateLikesOnPost = async (id: string, userlikes: string[], likes: number) => {
   const docRef = doc(db, COLLECTION_NAME, id);
