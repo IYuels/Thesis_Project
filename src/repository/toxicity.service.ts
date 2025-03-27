@@ -37,7 +37,7 @@ export interface ToxicityResult {
 }
 
 // Direct API URL configuration - no proxy
-const API_BASE_URL = 'https://final-final-uimo.onrender.com';
+const API_BASE_URL = 'https://for-version-3-3.onrender.com';
 
 /**
  * Enhanced toxicity check with proper error handling, timeouts,
