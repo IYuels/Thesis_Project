@@ -14,7 +14,6 @@ import CommentCard from '../comment';
 import { checkToxicity, censorText } from '@/repository/toxicity.service';
 import ToxicityWarningModal from '../toxicityWarningModal';
 import { subscribeToUserProfile } from '@/repository/user.service';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from 'sonner';
 import { 
     DropdownMenu, 
@@ -44,7 +43,7 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
     const toxicityCache = React.useRef<Map<string, any>>(new Map());
     const [isCheckingToxicity, setIsCheckingToxicity] = React.useState(false);
     const [showToxicityWarningModal, setShowToxicityWarningModal] = React.useState(false);
-    const [censorLevel, setCensorLevel] = React.useState<CensorLevel>(CensorLevel.AUTO);
+    const [censorLevel] = React.useState<CensorLevel>(CensorLevel.AUTO);
     const [isContentChecked, setIsContentChecked] = React.useState(false);
     
     // Comment state
@@ -468,30 +467,6 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
         });
     }, [data]);
     
-    // UI for selecting censor level
-    const CensorLevelSelector = () => {
-        if (!commentToxicity) return null;
-        
-        return (
-            <div className="mt-1 mb-2">
-                <Select
-                    value={censorLevel}
-                    onValueChange={(value) => setCensorLevel(value as CensorLevel)}
-                >
-                    <SelectTrigger className="h-8 text-xs bg-white w-40">
-                        <SelectValue placeholder="Censoring level" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value={CensorLevel.AUTO}>Auto</SelectItem>
-                        <SelectItem value={CensorLevel.LIGHT}>Light</SelectItem>
-                        <SelectItem value={CensorLevel.MEDIUM}>Medium</SelectItem>
-                        <SelectItem value={CensorLevel.HEAVY}>Heavy</SelectItem>
-                    </SelectContent>
-                </Select>
-            </div>
-        );
-    };
-    
     // Component to show toxicity status after checking
     const CommentToxicityIndicator = () => {
         if (isCheckingToxicity) {
@@ -603,12 +578,12 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
                             {hasToxicityWarning ? (
                                 <div>
                                     <div className="flex flex-wrap items-center mb-1 space-x-2">  
-                                        {data.originalCaption && (
-                                            <button 
-                                                onClick={toggleContentView}
-                                                className="text-xs text-gray-500 hover:text-gray-700 flex items-center"
-                                                title={showOriginalContent ? "Show censored version" : "Show original content"}
-                                            >
+                                    {data.originalCaption && data.originalCaption !== data.caption && (
+                                        <button 
+                                            onClick={toggleContentView}
+                                            className="text-xs text-gray-500 hover:text-gray-700 flex items-center"
+                                            title={showOriginalContent ? "Show censored version" : "Show original content"}
+                                        >
                                                 {showOriginalContent ? (
                                                     <>
                                                         <EyeOffIcon className="h-3 w-3 mr-1" />
@@ -670,7 +645,7 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
                                                         />
                                                         <CommentToxicityIndicator />
                                                         
-                                                        {commentToxicity && isContentChecked && <CensorLevelSelector />}
+                                                        {commentToxicity && isContentChecked}
                                                         
                                                         <div className="flex justify-end">
                                                             <Button 

@@ -9,7 +9,7 @@ import { DocumentResponse, Post, ToxicityData, CensorLevel } from '@/types';
 import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { AlertTriangle, ShieldAlert, Check, AlertCircle } from 'lucide-react';
+import { Check} from 'lucide-react';
 
 interface IHomeProps {}
 
@@ -25,7 +25,7 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
     const [page, setPage] = React.useState(1);
     const [sortFilter, setSortFilter] = React.useState("latest");
     const [allPosts, setAllPosts] = React.useState<DocumentResponse[]>([]);
-    const [censorLevel, setCensorLevel] = React.useState<CensorLevel>(CensorLevel.AUTO);
+    const [censorLevel] = React.useState<CensorLevel>(CensorLevel.AUTO);
     const [isContentChecked, setIsContentChecked] = React.useState(false);
     const postsPerPage = 5;
     
@@ -44,7 +44,7 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
     }, [isLoading, hasMore]);
 
     // Enhanced toxicity warning state with toxicity levels
-    const [toxicityWarning, setToxicityWarning] = React.useState<ToxicityData | null>(null);
+    const [,setToxicityWarning] = React.useState<ToxicityData | null>(null);
 
     const toxicityTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
     const toxicityCache = React.useRef<Map<string, any>>(new Map());
@@ -456,32 +456,6 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
                 </div>
             );
         }
-        
-        if (toxicityWarning) {
-            // Show different indicators based on toxicity level
-            const getIndicator = () => {
-                switch (toxicityWarning.toxicity_level) {
-                    case 'very toxic':
-                        return (
-                            <div className="flex items-center text-xs text-red-500 mt-1">
-                                <ShieldAlert className="h-3 w-3 mr-1" />
-                                <span>Very toxic content detected - will be censored when posted</span>
-                            </div>
-                        );
-                    case 'toxic':
-                    default:
-                        return (
-                            <div className="flex items-center text-xs text-yellow-500 mt-1">
-                                <AlertTriangle className="h-3 w-3 mr-1" />
-                                <span>Potentially inappropriate content - will be censored when posted</span>
-                            </div>
-                        );
-                }
-            };
-            
-            return getIndicator();
-        }
-        
         // Show success indicator if content has been checked and is safe
         if (isContentChecked) {
             return (
@@ -493,36 +467,6 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
         }
         
         return null;
-    };
-    
-    // Enhanced censor level selector component
-    const CensorLevelSelector = () => {
-        if (!toxicityWarning) return null;
-        
-        return (
-            <div className="mt-2">
-                <div className="flex items-center mb-1">
-                    <AlertCircle className="h-4 w-4 text-sky-500 mr-1" />
-                    <span className="text-xs text-sky-500">Content will be automatically censored based on detection</span>
-                </div>
-                <div className="mt-2">
-                    <Select 
-                        value={censorLevel} 
-                        onValueChange={(value) => setCensorLevel(value as CensorLevel)}
-                    >
-                        <SelectTrigger className="h-8 text-xs bg-white">
-                            <SelectValue placeholder="Censoring level" />
-                        </SelectTrigger>
-                        <SelectContent className="bg-white">
-                            <SelectItem value={CensorLevel.AUTO}>Auto (Based on detection)</SelectItem>
-                            <SelectItem value={CensorLevel.LIGHT}>Light (Severe terms only)</SelectItem>
-                            <SelectItem value={CensorLevel.MEDIUM}>Medium (Most inappropriate content)</SelectItem>
-                            <SelectItem value={CensorLevel.HEAVY}>Heavy (All potentially inappropriate content)</SelectItem>
-                        </SelectContent>
-                    </Select>
-                </div>
-            </div>
-        );
     };
     
     return (
@@ -542,10 +486,7 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
                                         onChange={handleCaptionChange}
                                     />
                                 </div>
-                                
-                                {/* Enhanced status indicators */}
                                 <ToxicityStatusIndicator />
-                                <CensorLevelSelector />
                             </div>
                             
                             <Button 
