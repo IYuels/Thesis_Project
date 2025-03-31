@@ -1,9 +1,3 @@
-// Enhanced toxicity interfaces
-interface ToxicityResponse {
-  predictions: ToxicityPrediction[];
-  model_version: string;
-}
-
 interface ToxicityPrediction {
   text: string;
   toxicity_level: 'not toxic' | 'toxic' | 'very toxic';
@@ -22,6 +16,7 @@ interface CensorResponse {
 }
 
 // Standardized API response for our frontend
+// Using ToxicityData from types.ts for consistency
 export interface ToxicityResult {
   results: Record<string, {
     probability: number;
@@ -36,8 +31,11 @@ export interface ToxicityResult {
   censored_text: string | null;
 }
 
+// Aliases for compatibility with the application's types
+export type ToxicityData = ToxicityResult;
+
 // Direct API URL configuration - no proxy
-const API_BASE_URL = 'https://final-final-uimo.onrender.com';
+const API_BASE_URL = 'https://final-final-uimo.onrender.com/';
 
 /**
  * Enhanced toxicity check with proper error handling, timeouts,
@@ -51,9 +49,9 @@ export const checkToxicity = async (text: string): Promise<ToxicityResult> => {
   try {
     // Create an AbortController for timeout handling
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000); // 5 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
 
-    const response = await fetch(`${API_BASE_URL}/predict`, {
+    const response = await fetch(`${API_BASE_URL}predict`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -72,53 +70,69 @@ export const checkToxicity = async (text: string): Promise<ToxicityResult> => {
       throw new Error(`Toxicity check failed: ${response.status}`);
     }
     
-    const data: ToxicityResponse = await response.json();
+    const data = await response.json();
     
-    // Only expecting one prediction for a single text
-    if (!data.predictions || data.predictions.length === 0) {
-      throw new Error('No predictions returned');
+    // Check if the response matches the expected format from FastAPI
+    if (data.toxicity !== undefined && Array.isArray(data.categories)) {
+      // FastAPI direct response format
+      return {
+        results: transformCategoriesArray(data.categories),
+        summary: {
+          is_toxic: data.toxicity !== 'not toxic',
+          toxicity_level: data.toxicity || 'not toxic',
+          detected_categories: data.categories
+        },
+        raw_probabilities: null,
+        censored_text: data.censored_text
+      };
     }
     
-    const prediction = data.predictions[0];
-    
-    // Ensure no undefined values - important for Firebase
-    // Fix: Explicitly type the object with Record
-    const sanitizedResults: Record<string, { probability: number; is_detected: boolean }> = {};
-    
-    if (prediction.category_probabilities) {
-      Object.entries(prediction.category_probabilities).forEach(([key, value]) => {
-        if (value !== undefined) {
-          sanitizedResults[key] = {
-            probability: Number(value),
-            is_detected: Number(value) >= 0.5
-          };
-        }
-      });
+    // Handle traditional ToxicityResponse format
+    if (data.predictions && data.predictions.length > 0) {
+      const prediction = data.predictions[0];
+      
+      // Ensure no undefined values - important for Firebase
+      // Fix: Explicitly type the object with Record
+      const sanitizedResults: Record<string, { probability: number; is_detected: boolean }> = {};
+      
+      if (prediction.category_probabilities) {
+        Object.entries(prediction.category_probabilities).forEach(([key, value]) => {
+          if (value !== undefined) {
+            sanitizedResults[key] = {
+              probability: Number(value),
+              is_detected: Number(value) >= 0.5
+            };
+          }
+        });
+      }
+      
+      // Ensure raw_probabilities has no undefined values
+      // Fix: Explicitly type the object with Record
+      const sanitizedRawProbs: Record<string, number> = {};
+      
+      if (prediction.raw_probabilities) {
+        Object.entries(prediction.raw_probabilities).forEach(([key, value]) => {
+          if (value !== undefined) {
+            sanitizedRawProbs[key] = Number(value);
+          }
+        });
+      }
+      
+      // Transform to our standardized format with properly typed objects
+      return {
+        results: sanitizedResults,
+        summary: {
+          is_toxic: prediction.is_toxic,
+          toxicity_level: prediction.toxicity_level || 'not toxic',
+          detected_categories: getDetectedCategories(prediction.category_probabilities)
+        },
+        raw_probabilities: Object.keys(sanitizedRawProbs).length > 0 ? sanitizedRawProbs : null,
+        censored_text: prediction.censored_text
+      };
     }
     
-    // Ensure raw_probabilities has no undefined values
-    // Fix: Explicitly type the object with Record
-    const sanitizedRawProbs: Record<string, number> = {};
-    
-    if (prediction.raw_probabilities) {
-      Object.entries(prediction.raw_probabilities).forEach(([key, value]) => {
-        if (value !== undefined) {
-          sanitizedRawProbs[key] = Number(value);
-        }
-      });
-    }
-    
-    // Transform to our standardized format with properly typed objects
-    return {
-      results: sanitizedResults,
-      summary: {
-        is_toxic: prediction.is_toxic,
-        toxicity_level: prediction.toxicity_level || 'not toxic',
-        detected_categories: getDetectedCategories(prediction.category_probabilities)
-      },
-      raw_probabilities: Object.keys(sanitizedRawProbs).length > 0 ? sanitizedRawProbs : null,
-      censored_text: prediction.censored_text
-    };
+    // If neither format matches, return default result
+    return getDefaultToxicityResult();
   } catch (error) {
     console.error('Error checking toxicity:', error);
     // More detailed error logging
@@ -144,7 +158,7 @@ export const batchCheckToxicity = async (texts: string[]): Promise<ToxicityResul
   const limitedTexts = texts.slice(0, maxBatchSize);
   
   try {
-    const response = await fetch(`${API_BASE_URL}/batch-predict`, {
+    const response = await fetch(`${API_BASE_URL}predict-batch`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -159,45 +173,65 @@ export const batchCheckToxicity = async (texts: string[]): Promise<ToxicityResul
       throw new Error(`Batch toxicity check failed: ${response.status}`);
     }
     
-    const data: ToxicityResponse = await response.json();
+    const data = await response.json();
     
-    return data.predictions.map(prediction => {
-      // Fix: Explicitly type objects used for string indexing
-      const sanitizedResults: Record<string, { probability: number; is_detected: boolean }> = {};
-      const sanitizedRawProbs: Record<string, number> = {};
-      
-      // Process category probabilities
-      if (prediction.category_probabilities) {
-        Object.entries(prediction.category_probabilities).forEach(([key, value]) => {
-          if (value !== undefined) {
-            sanitizedResults[key] = {
-              probability: Number(value),
-              is_detected: Number(value) >= 0.5
-            };
-          }
-        });
-      }
-      
-      // Process raw probabilities
-      if (prediction.raw_probabilities) {
-        Object.entries(prediction.raw_probabilities).forEach(([key, value]) => {
-          if (value !== undefined) {
-            sanitizedRawProbs[key] = Number(value);
-          }
-        });
-      }
-      
-      return {
-        results: sanitizedResults,
+    // Check if response is a direct array of FastAPI responses
+    if (Array.isArray(data) && data.length > 0 && 'toxicity' in data[0]) {
+      return data.map(item => ({
+        results: transformCategoriesArray(item.categories),
         summary: {
-          is_toxic: prediction.is_toxic,
-          toxicity_level: prediction.toxicity_level || 'not toxic',
-          detected_categories: getDetectedCategories(prediction.category_probabilities)
+          is_toxic: item.toxicity !== 'not toxic',
+          toxicity_level: item.toxicity || 'not toxic',
+          detected_categories: item.categories
         },
-        raw_probabilities: Object.keys(sanitizedRawProbs).length > 0 ? sanitizedRawProbs : null,
-        censored_text: prediction.censored_text
-      };
-    });
+        raw_probabilities: null,
+        censored_text: item.censored_text
+      }));
+    }
+    
+    // Handle traditional ToxicityResponse format
+    if (data.predictions && Array.isArray(data.predictions)) {
+      return data.predictions.map((prediction: ToxicityPrediction) => {
+        // Fix: Explicitly type objects used for string indexing
+        const sanitizedResults: Record<string, { probability: number; is_detected: boolean }> = {};
+        const sanitizedRawProbs: Record<string, number> = {};
+        
+        // Process category probabilities
+        if (prediction.category_probabilities) {
+          Object.entries(prediction.category_probabilities).forEach(([key, value]) => {
+            if (value !== undefined) {
+              sanitizedResults[key] = {
+                probability: Number(value),
+                is_detected: Number(value) >= 0.5
+              };
+            }
+          });
+        }
+        
+        // Process raw probabilities
+        if (prediction.raw_probabilities) {
+          Object.entries(prediction.raw_probabilities).forEach(([key, value]) => {
+            if (value !== undefined) {
+              sanitizedRawProbs[key] = Number(value);
+            }
+          });
+        }
+        
+        return {
+          results: sanitizedResults,
+          summary: {
+            is_toxic: prediction.is_toxic,
+            toxicity_level: prediction.toxicity_level || 'not toxic',
+            detected_categories: getDetectedCategories(prediction.category_probabilities)
+          },
+          raw_probabilities: Object.keys(sanitizedRawProbs).length > 0 ? sanitizedRawProbs : null,
+          censored_text: prediction.censored_text
+        };
+      });
+    }
+    
+    // If neither format matches, return default results
+    return limitedTexts.map(() => getDefaultToxicityResult());
   } catch (error) {
     console.error('Error in batch toxicity check:', error);
     // Return default results for each text
@@ -210,7 +244,7 @@ export const batchCheckToxicity = async (texts: string[]): Promise<ToxicityResul
  */
 export const censorText = async (
   text: string, 
-  level: 'auto' | 'light' | 'medium' | 'heavy' = 'auto'
+  level: 'auto' | 'light' | 'medium' | 'heavy' = 'auto' // Matches CensorLevel enum in types.ts
 ): Promise<CensorResponse> => {
   if (!text || text.trim() === '') {
     return {
@@ -226,7 +260,7 @@ export const censorText = async (
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-    const response = await fetch(`${API_BASE_URL}/censor`, {
+    const response = await fetch(`${API_BASE_URL}censor`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -257,11 +291,51 @@ export const censorText = async (
   }
 };
 
+// Helper function to transform categories array to results format
+const transformCategoriesArray = (categories: string[] = []): Record<string, { probability: number; is_detected: boolean }> => {
+  // Using categories that map to ToxicityCategory enum from types.ts
+  const categoryMapping: Record<string, string> = {
+    'insult': 'insults',
+    'profanity': 'obscenity/profanity',
+    'threat': 'threatening',
+    'identity_hate': 'identity-based negativity'
+  };
+  
+  const results: Record<string, { probability: number; is_detected: boolean }> = {};
+  
+  // Set all possible categories first with default values
+  Object.values(categoryMapping).forEach(mappedCategory => {
+    results[mappedCategory] = {
+      probability: 0,
+      is_detected: false
+    };
+  });
+  
+  // Then update with detected categories
+  categories.forEach(category => {
+    const mappedCategory = categoryMapping[category] || category;
+    results[mappedCategory] = {
+      probability: 1,
+      is_detected: true
+    };
+  });
+  
+  return results;
+};
+
 // Helper function to extract detected categories
 const getDetectedCategories = (categories: Record<string, number> = {}): string[] => {
+  // Map back to the categories used in the application
+  const categoryMapping: Record<string, string> = {
+    'insult': 'insults',
+    'profanity': 'obscenity/profanity',
+    'threat': 'threatening',
+    'identity_hate': 'identity-based negativity'
+  };
+  
   return Object.entries(categories)
     .filter(([_, value]) => value >= 0.5)
-    .map(([key]) => key);
+    .map(([key]) => categoryMapping[key] || key);
 };
 
 // Default toxicity result for error cases

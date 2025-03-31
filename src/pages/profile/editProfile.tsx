@@ -9,6 +9,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import avatar from '@/assets/images/avatar.png';
 import { Input } from '@/components/ui/input';
 import { createUserProfile, updateUserProfile, getUserProfile } from '@/repository/user.service';
+import { toast } from "sonner";
 
 interface IEditProfileProps {}
 
@@ -88,15 +89,13 @@ const EditProfile: React.FunctionComponent<IEditProfileProps> = () => {
                 await createUserProfile(data);
             }
             
-            // Optional: Add a success message
-            alert("Profile updated successfully!");
+            // Show success toast instead of alert
+            toast.success("Profile updated successfully!");
             
             // Navigate back to profile
             navigate("/profile");
         } catch (err) {
-            console.error("Error updating profile:", err);
-            // Optional: Add an error message
-            alert("Failed to update profile. Please try again.");
+            toast.error("Error updating profile");
         }
     };
 

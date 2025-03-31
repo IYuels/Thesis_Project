@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useUserAuth } from '@/context/userAuthContext';
-import { Comment, ToxicityData } from '@/types';
+import { Comment, ToxicityData} from '@/types';
 import { deleteComment, updateLikesOnComment } from '@/repository/comment.service';
 import { cn } from '@/lib/utils';
 import { CardContent, CardHeader, CardTitle } from '../ui/card';
@@ -11,55 +11,80 @@ import {
   EyeOffIcon, 
   ClockIcon, 
   AlertCircle,
-  X
+  MoreVertical
 } from 'lucide-react';
 import avatar from "@/assets/images/avatar.png";
 import ToxicityWarningModal from '../toxicityWarningModal';
 import { subscribeToUserProfile } from '@/repository/user.service';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 import { toast } from 'sonner';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface ICommentCardProps {
     data: Comment;
     onDelete?: () => void;
+    currentUserProfile?: {
+        displayName: string;
+        photoURL: string;
+    };
 }
 
-const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data, onDelete }) => {
+const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data, onDelete, currentUserProfile }) => {
     const [showToxicityWarningModal, setShowToxicityWarningModal] = React.useState(false);
     const { user, userProfile } = useUserAuth();
     const [showOriginalContent, setShowOriginalContent] = React.useState(false);
+    // Add state for delete confirmation dialog
+    const [showDeleteModal, setShowDeleteModal] = React.useState(false);
+    
+    // Store the full profile response from subscription
     const [commentDisplayData, setCommentDisplayData] = React.useState({
         username: data.username || "Guest_User",
         photoURL: data.photoURL || avatar
     });
     
+    // Set up the real-time listener once when component mounts
     React.useEffect(() => {
         let unsubscribe = () => {};
         
         // Only set up listener if this comment belongs to a user
         if (data.userID) {
-          // Set initial data from the comment
-          setCommentDisplayData({
-            username: data.username || "Guest_User",
-            photoURL: data.photoURL || avatar
-          });
-          
-          // Subscribe to real-time profile updates
-          unsubscribe = subscribeToUserProfile(data.userID, (profileData) => {
-            if (profileData && Object.keys(profileData).length > 0) {
-              setCommentDisplayData({
-                username: profileData.displayName || "Guest_User",
-                photoURL: profileData.photoURL || avatar
-              });
-            }
-          });
+            // Set initial data from the comment
+            setCommentDisplayData({
+                username: data.username || "Guest_User",
+                photoURL: data.photoURL || avatar
+            });
+            
+            // Subscribe to real-time profile updates
+            unsubscribe = subscribeToUserProfile(data.userID, (profileData) => {
+                if (profileData && Object.keys(profileData).length > 0) {
+                    setCommentDisplayData({
+                        username: profileData.displayName || "Guest_User",
+                        photoURL: profileData.photoURL || avatar
+                    });
+                }
+            });
         }
         
         // Clean up subscription when component unmounts
         return () => {
-          unsubscribe();
+            unsubscribe();
         };
-    }, [data.userID]);
+    }, [data.userID, data.username, data.photoURL]);
 
     // Enhanced toxicity check - handles different toxicity levels
     const hasToxicity = data.toxicity && data.toxicity.is_toxic === true;
@@ -108,7 +133,7 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data, onDelet
                           data.originalCaption !== null && 
                           data.originalCaption !== data.caption;
     
-    // Enhanced debug info
+    // Enhanced debug info for toxicity
     React.useEffect(() => {
         if (hasToxicity) {
             console.log("Comment with toxicity:", {
@@ -123,16 +148,20 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data, onDelet
         }
     }, [data, hasToxicity, hasOriginalContent]);
     
-    // Use userProfile data if this comment belongs to the current user
     const isCurrentUserComment = data.userID === user?.uid;
-    const displayName = isCurrentUserComment && userProfile ? 
-        userProfile.displayName : 
-        commentDisplayData.username;
+    
+    // Prefer real-time data from context for current user, or subscription data for other users
+    const displayName = isCurrentUserComment && currentUserProfile?.displayName 
+    ? currentUserProfile.displayName 
+    : (isCurrentUserComment && userProfile?.displayName 
+        ? userProfile.displayName 
+        : commentDisplayData.username);
 
-    // Use profile photo if this comment belongs to the current user
-    const photoURL = isCurrentUserComment && userProfile?.photoURL ? 
-        userProfile.photoURL : 
-        commentDisplayData.photoURL;
+    const photoURL = isCurrentUserComment && currentUserProfile?.photoURL 
+        ? currentUserProfile.photoURL 
+        : (isCurrentUserComment && userProfile?.photoURL 
+            ? userProfile.photoURL 
+            : commentDisplayData.photoURL);
 
     const [likesInfo, setLikesInfo] = React.useState<{
         likes: number,
@@ -227,11 +256,9 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data, onDelet
         }
     };
 
+    // Updated to use the AlertDialog instead of window.confirm
     const handleDeleteComment = async () => {
-        // Confirm deletion
-        const confirmDelete = window.confirm("Are you sure you want to delete this comment?");
-        
-        if (confirmDelete && user?.uid === data.userID) {
+        if (user?.uid === data.userID) {
             try {
                 await deleteComment(data.id!);
                 
@@ -252,7 +279,7 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data, onDelet
     
     return (
         <div className="bg-white rounded-lg p-3 sm:p-4 mb-2 shadow-sm">
-<CardHeader className="p-0 pb-2 flex flex-row justify-between items-center">
+            <CardHeader className="p-0 pb-2 flex flex-row justify-between items-center">
                 <CardTitle className="text-xs sm:text-sm flex items-center flex-grow overflow-hidden">
                     <img 
                         src={photoURL} 
@@ -263,7 +290,7 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data, onDelet
                 </CardTitle>
                 
                 <div className="flex items-center space-x-2">
-                    {/* Date display remains the same */}
+                    {/* Date display */}
                     {data.date && (
                         <div className="text-xs text-gray-500 flex items-center">
                             <ClockIcon className="h-3 w-3 mr-1" />
@@ -271,7 +298,7 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data, onDelet
                         </div>
                     )}
                     
-                    {/* Toxicity indicator remains the same */}
+                    {/* Toxicity indicator */}
                     {hasToxicity && (
                         <TooltipProvider>
                             <Tooltip>
@@ -291,15 +318,26 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data, onDelet
                         </TooltipProvider>
                     )}
 
-                    {/* New delete button, visible only to comment owner */}
+                    {/* Replace X icon with 3-dot menu button */}
                     {user?.uid === data.userID && (
-                        <button
-                            onClick={handleDeleteComment}
-                            className="focus:outline-none text-red-500" 
-                            title="Delete comment"
-                        >
-                            <X className="h-4 w-4" />
-                        </button>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <button
+                                    className="focus:outline-none text-gray-500 hover:text-gray-700" 
+                                    title="Comment options"
+                                >
+                                    <MoreVertical className="h-4 w-4" />
+                                </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-36">
+                                <DropdownMenuItem 
+                                    className="text-red-500 focus:text-red-500 cursor-pointer"
+                                    onClick={() => setShowDeleteModal(true)}
+                                >
+                                    Delete comment
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                     )}
                 </div>
             </CardHeader>
@@ -356,9 +394,29 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data, onDelet
                 onClose={() => setShowToxicityWarningModal(false)}
                 toxicityData={data.toxicity as ToxicityData}
             />
+
+            {/* Delete Comment Confirmation Modal */}
+            <AlertDialog open={showDeleteModal} onOpenChange={setShowDeleteModal}>
+                <AlertDialogContent className='bg-white'>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Delete Comment</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Are you sure you want to delete this comment? This action cannot be undone.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction 
+                            className="bg-red-500 hover:bg-red-600"
+                            onClick={handleDeleteComment}
+                        >
+                            Delete
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 };
-
 
 export default CommentCard;

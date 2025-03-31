@@ -7,10 +7,9 @@ import { Button } from "@/components/ui/button";
 import { getPostByUserID } from "@/repository/post.service";
 import { useNavigate } from "react-router-dom";
 import { getUserProfile, subscribeToUserProfile } from "@/repository/user.service";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import CommentCard from "@/components/comment";
-import { ChevronDownIcon, Edit2Icon, MessageCircleIcon, ThumbsUpIcon } from "lucide-react";
+import { Edit2Icon } from "lucide-react";
 import { getComment } from "@/repository/comment.service";
+import PostCard from "@/components/postCard"; // Import the PostCard component
 
 interface IProfileProps {}
 
@@ -27,9 +26,8 @@ const Profile: React.FunctionComponent<IProfileProps> = () => {
     
     const [userInfo, setUserInfo] = React.useState<ProfileResponse>(initialUserInfo);
     const [data, setData] = React.useState<DocumentResponse[]>([]);
-    const [commentData, setCommentData] = React.useState<Comment[]>([]);
+    const [, setCommentData] = React.useState<Comment[]>([]);
     const [loading, setLoading] = React.useState<boolean>(true);
-    const [expandedComments, setExpandedComments] = React.useState<Record<string, boolean>>({});
 
     const getAllPost = React.useCallback(async (id: string) => {
         try {
@@ -49,7 +47,10 @@ const Profile: React.FunctionComponent<IProfileProps> = () => {
                         username: data.username || "",
                         photoURL: data.photoURL || "",
                         userID: data.userID || "",
-                        date: data.date || new Date()
+                        date: data.date || new Date(),
+                        // Include toxicity data if it exists
+                        toxicity: data.toxicity || null,
+                        originalCaption: data.originalCaption || null,
                     };
                     tempArr.push(responseObj);
                 });
@@ -79,20 +80,20 @@ const Profile: React.FunctionComponent<IProfileProps> = () => {
     }, []);
 
     const getUserProfileInfo = React.useCallback(async (userId: string) => {
-        // We'll keep this function for initial data load to avoid UI flickering
         try {
             const profileData = await getUserProfile(userId);
             if (profileData) {
                 setUserInfo(prev => ({
                     ...prev,
                     ...profileData,
-                    userId: userId, // Ensure userId is always set
+                    userId: userId,
                 }));
             }
         } catch (error) {
             console.error("Error fetching user profile:", error);
         }
     }, []);
+    
     React.useEffect(() => {
         let unsubscribe: () => void = () => {};
         
@@ -106,7 +107,7 @@ const Profile: React.FunctionComponent<IProfileProps> = () => {
                     setUserInfo(prev => ({
                         ...prev,
                         ...profileData,
-                        userId: user.uid, // Ensure userId is always set
+                        userId: user.uid,
                     }));
                 }
             });
@@ -123,7 +124,7 @@ const Profile: React.FunctionComponent<IProfileProps> = () => {
         if (user?.uid) {
             getAllPost(user.uid);
         }
-    }, [user, getUserProfileInfo, getAllPost]);
+    }, [user, getAllPost]);
     
     React.useEffect(() => {
         if (data.length > 0) {
@@ -133,99 +134,20 @@ const Profile: React.FunctionComponent<IProfileProps> = () => {
     }, [data, fetchCommentsForPosts]);
     
     const editProfile = () => {
-        // Use URL parameters instead of state to avoid issues with refresh
         navigate(`/editprofile/${user?.uid}`);
     };
 
-    const toggleComments = (postId: string) => {
-        setExpandedComments(prev => ({
-            ...prev,
-            [postId]: !prev[postId]
-        }));
-    };
-
-    const getPostComments = (postId: string) => {
-        return commentData.filter(comment => comment.postID === postId);
-    };
-
     const renderPosts = () => {
-        return data.map((post) => {
-            const postComments = getPostComments(post.id);
-            const commentCount = postComments.length;
-            const showAllComments = expandedComments[post.id] || false;
-            const displayedComments = showAllComments ? postComments : postComments.slice(0, 1);
-            
-            return ( 
-                <div className="w-full" key={post.id}>
-                    <Card className="mb-6 overflow-hidden shadow-md hover:shadow-lg transition-shadow duration-200">
-                        <CardHeader className="flex flex-col pb-3">
-                            <CardTitle className="text-sm flex justify-start items-center">
-                                <span className="relative">
-                                    <img 
-                                        src={userInfo.photoURL || avatar}
-                                        className="w-10 h-10 rounded-full border-2 border-slate-800 object-cover"
-                                        alt="User avatar"
-                                    />
-                                </span>
-                                <span className="ml-3 font-semibold text-base">{userInfo.displayName}</span>
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent className="pt-4">
-                            <div className="border p-4 rounded-xl bg-white shadow-sm">
-                                <p className="text-gray-800 whitespace-pre-wrap">{post.caption}</p>
-                            </div>
-                            <div className="flex items-center justify-between mt-4 px-2">
-                                <div className="flex items-center space-x-6">
-                                    <div className="flex items-center space-x-1">
-                                        <ThumbsUpIcon className="h-4 w-4 text-blue-500" />
-                                        <span className="text-sm text-gray-700">{post.likes || 0}</span>
-                                    </div>
-                                    <div className="flex items-center space-x-1">
-                                        <MessageCircleIcon className="h-4 w-4 text-green-500" />
-                                        <span className="text-sm text-gray-700">{commentCount}</span>
-                                    </div>
-                                </div>
-                                <div className="text-xs text-gray-500">
-                                    {}
-                                </div>
-                            </div>
-                        </CardContent>
-                        <CardFooter className="pt-0 pb-4 px-4 block">
-                            <div className="flex flex-col bg-gray-50 rounded-lg w-full mt-2 overflow-hidden">
-                                <div className="py-2 px-3 bg-gray-100 font-medium text-sm flex justify-between items-center">
-                                    <span>Comments</span>
-                                    {commentCount > 0 && (
-                                        <span className="text-xs bg-gray-200 px-2 py-0.5 rounded-full">{commentCount}</span>
-                                    )}
-                                </div>
-                                
-                                {commentCount > 0 ? (
-                                    <div className="p-3 space-y-3">
-                                        {displayedComments.map((item) => (
-                                            <CommentCard data={item} key={item.id}/>
-                                        ))}
-                                        
-                                        {commentCount > 1 && (
-                                            <Button 
-                                                variant="outline" 
-                                                size="sm" 
-                                                className="w-full mt-2 text-xs border-gray-300 hover:bg-gray-100"
-                                                onClick={() => toggleComments(post.id)}
-                                            >
-                                                {showAllComments ? 'Show less' : `See ${commentCount - 1} more comments`}
-                                                <ChevronDownIcon className={`ml-1 h-4 w-4 transition-transform ${showAllComments ? 'rotate-180' : ''}`} />
-                                            </Button>
-                                        )}
-                                    </div>
-                                ) : (
-                                    <div className="text-center p-4 text-sm text-gray-500">No comments yet</div>
-                                )}
-                            </div>  
-                        </CardFooter>
-                    </Card>
-                </div>
-            );
+        // Sort posts by date (newest first)
+        const sortedPosts = [...data].sort((a, b) => {
+            const dateA = a.date instanceof Date ? a.date : new Date(a.date);
+            const dateB = b.date instanceof Date ? b.date : new Date(b.date);
+            return dateB.getTime() - dateA.getTime();
         });
+        
+        return sortedPosts.map((post) => (
+            <PostCard key={post.id} data={post} />
+        ));
     };
 
     if (!user) {

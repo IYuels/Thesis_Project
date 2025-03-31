@@ -25,41 +25,55 @@ const initialValue: UserSignIn = {
 interface ISignupProps {}
 
 const Signup: React.FunctionComponent<ISignupProps> = () => {
-  const { googleSignIn, signUp, sendVerificationEmail } = useUserAuth();
+  const { googleSignIn, signUp, sendVerificationEmail, error, clearError, loading } = useUserAuth();
   const navigate = useNavigate();
   const [userInfo, setUserInfo] = React.useState<UserSignIn>(initialValue);
-  const [isLoading, setIsLoading] = React.useState<boolean>(false);
-  const [error, setError] = React.useState<string>("");
+  
+  // Clear context error when component unmounts
+  React.useEffect(() => {
+    return () => {
+      clearError();
+    };
+  }, [clearError]);
+  
+  // Show toast when error changes
+  React.useEffect(() => {
+    if (error) {
+      toast.error("Sign up failed", {
+        description: error
+      });
+    }
+  }, [error]);
   
   const handleGoogleSignIn = async (e: React.MouseEvent<HTMLElement>) => {
     e.preventDefault();
-    setIsLoading(true);
-    setError("");
+    clearError(); // Clear any previous errors
+    
     try {
       await googleSignIn();
       navigate("/");
     } catch (error: any) {
-      setError(error.message || "Failed to sign in with Google");
-    } finally {
-      setIsLoading(false);
+      // The error is already handled in the context
+      console.error("Google Sign-in error:", error);
     }
   };
   
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setIsLoading(true);
-    setError("");
+    clearError(); // Clear any previous errors
     
-    // Validation
+    // Local validation
     if (userInfo.password !== userInfo.confirmPassword) {
-      setError("Passwords do not match");
-      setIsLoading(false);
+      toast.error("Password mismatch", {
+        description: "Passwords do not match"
+      });
       return;
     }
     
     if (userInfo.password.length < 6) {
-      setError("Password should be at least 6 characters");
-      setIsLoading(false);
+      toast.error("Password too short", {
+        description: "Password should be at least 6 characters"
+      });
       return;
     }
     
@@ -78,13 +92,8 @@ const Signup: React.FunctionComponent<ISignupProps> = () => {
         state: { email: userInfo.email } 
       });
     } catch (error: any) {
-      console.error("Error: ", error);
-      setError(error.message || "Failed to create account");
-      toast.error("Failed to create account", {
-        description: error.message
-      });
-    } finally {
-      setIsLoading(false);
+      console.error("Signup error:", error);
+      // No need to set error manually as it's handled by the context
     }
   };
   
@@ -104,36 +113,14 @@ const Signup: React.FunctionComponent<ISignupProps> = () => {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="grid gap-4">
-                  {error && (
-                    <div className="p-3 text-sm bg-red-100 text-red-800 rounded">
-                      {error}
-                    </div>
-                  )}
-                  <div className="grid">
-                    <Button 
-                      variant="outline" 
-                      onClick={handleGoogleSignIn}
-                      disabled={isLoading}
-                      type="button"
-                    >
-                      {isLoading ? (
-                        <Icons.spinner className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <Icons.google className="mr-2 h-4 w-4" />
-                      )}
-                      Google
-                    </Button>
+                  {/* Removed the error display div from here */}
+                  
+                  {/* Added divider line after the credentials text */}
+                  <div className="pt-3">
+                    <div className="w-full border-t border-gray-200"></div>
                   </div>
-                  <div className="relative">
-                    <div className="absolute inset-0 flex items-center">
-                      <span className="w-full border-t" />
-                    </div>
-                    <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-background bg-white px-2 text-muted-foreground">
-                        Or continue with
-                      </span>
-                    </div>
-                  </div>
+                  
+                  {/* Email and password forms first */}
                   <div className="grid gap-2">
                     <Label htmlFor="email">Email address</Label>
                     <Input
@@ -145,7 +132,7 @@ const Signup: React.FunctionComponent<ISignupProps> = () => {
                         setUserInfo({ ...userInfo, email: e.target.value })
                       }
                       required
-                      disabled={isLoading}
+                      disabled={loading}
                     />
                   </div>
                   <div className="grid gap-2">
@@ -159,7 +146,7 @@ const Signup: React.FunctionComponent<ISignupProps> = () => {
                         setUserInfo({ ...userInfo, password: e.target.value })
                       }
                       required
-                      disabled={isLoading}
+                      disabled={loading}
                     />
                   </div>
                   <div className="grid gap-2">
@@ -176,17 +163,15 @@ const Signup: React.FunctionComponent<ISignupProps> = () => {
                         })
                       }
                       required
-                      disabled={isLoading}
+                      disabled={loading}
                     />
                   </div>
-                </CardContent>
-                <CardFooter className="flex flex-col">
                   <Button 
-                    className="w-full" 
+                    className="w-full  hover:bg-slate-200 border cursor-pointer" 
                     type="submit"
-                    disabled={isLoading}
+                    disabled={loading}
                   >
-                    {isLoading ? (
+                    {loading ? (
                       <>
                         <Icons.spinner className="mr-2 h-4 w-4 animate-spin" />
                         Signing Up...
@@ -195,6 +180,38 @@ const Signup: React.FunctionComponent<ISignupProps> = () => {
                       "Sign Up"
                     )}
                   </Button>
+                  
+                  {/* Divider */}
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <span className="w-full border-t" />
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                      <span className="bg-background bg-white px-2 text-muted-foreground">
+                        Or login with
+                      </span>
+                    </div>
+                  </div>
+                  
+                  {/* Google button at the end */}
+                  <div className="grid">
+                    <Button 
+                      className="w-full hover:bg-slate-200 cursor-pointer"
+                      variant="outline" 
+                      onClick={handleGoogleSignIn}
+                      disabled={loading}
+                      type="button"
+                    >
+                      {loading ? (
+                        <Icons.spinner className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Icons.google className="mr-2 h-4 w-4" />
+                      )}
+                      Google
+                    </Button>
+                  </div>
+                </CardContent>
+                <CardFooter className="flex flex-col">
                   <p className="mt-3 text-sm text-center">
                     Already have an account? <Link to="/login">Login</Link>
                   </p>

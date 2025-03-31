@@ -26,6 +26,7 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
     const [sortFilter, setSortFilter] = React.useState("latest");
     const [allPosts, setAllPosts] = React.useState<DocumentResponse[]>([]);
     const [censorLevel, setCensorLevel] = React.useState<CensorLevel>(CensorLevel.AUTO);
+    const [isContentChecked, setIsContentChecked] = React.useState(false);
     const postsPerPage = 5;
     
     const observer = React.useRef<IntersectionObserver | null>(null);
@@ -47,8 +48,6 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
 
     const toxicityTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
     const toxicityCache = React.useRef<Map<string, any>>(new Map());
-    const toxicityCheckInProgress = React.useRef(false);
-    const lastCheckedText = React.useRef('');
 
     const getAllPost = async() => {
         setIsLoading(true);
@@ -196,82 +195,63 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
         }
     };
 
-    // Enhanced caption change handler with improved toxicity detection
+    // Modified caption change handler - no longer triggers toxicity check
     const handleCaptionChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         const newText = e.target.value;
         setPost({...post, caption: newText});
         
-        if (toxicityTimeoutRef.current) {
-            clearTimeout(toxicityTimeoutRef.current);
-        }
-        
-        // Clear toxicity warning when text changes significantly
-        if (toxicityWarning && Math.abs(newText.length - post.caption.length) > 5) {
+        // Reset content checked status when text changes
+        if (isContentChecked) {
+            setIsContentChecked(false);
             setToxicityWarning(null);
         }
-        
-        // Skip empty text check
-        if (!newText.trim()) {
-            setIsCheckingToxicity(false);
-            setToxicityWarning(null);
+    };
+
+    // New function to handle the check button click
+    const handleCheckContent = async () => {
+        if (!post.caption.trim()) {
             return;
         }
         
-        // Use debouncing to prevent excessive API calls
-        toxicityTimeoutRef.current = setTimeout(async () => {
-            if (toxicityCache.current.has(newText) || toxicityCheckInProgress.current) {
-                // Check cached result if available
-                if (toxicityCache.current.has(newText)) {
-                    const cachedResult = toxicityCache.current.get(newText);
-                    if (cachedResult.summary.is_toxic) {
-                        setToxicityWarning({
-                            is_toxic: cachedResult.summary.is_toxic,
-                            toxicity_level: cachedResult.summary.toxicity_level || 'toxic',
-                            detected_categories: cachedResult.summary.detected_categories || [],
-                            results: cachedResult.results || {}
-                        });
-                    } else {
-                        setToxicityWarning(null);
-                    }
+        setIsCheckingToxicity(true);
+        
+        try {
+            const result = await performToxicityCheck(post.caption);
+            
+            if (result) {
+                if (result.summary.is_toxic) {
+                    setToxicityWarning({
+                        is_toxic: result.summary.is_toxic,
+                        toxicity_level: result.summary.toxicity_level || 'toxic',
+                        detected_categories: result.summary.detected_categories || [],
+                        results: result.results || {}
+                    });
+                } else {
+                    setToxicityWarning(null);
                 }
-                return;
             }
             
-            toxicityCheckInProgress.current = true;
-            lastCheckedText.current = newText;
-            setIsCheckingToxicity(true);
-            
-            try {
-                const result = await performToxicityCheck(newText);
-                
-                // Only update UI if text hasn't changed while checking
-                if (post.caption === newText && result) {
-                    if (result.summary.is_toxic) {
-                        setToxicityWarning({
-                            is_toxic: result.summary.is_toxic,
-                            toxicity_level: result.summary.toxicity_level || 'toxic',
-                            detected_categories: result.summary.detected_categories || [],
-                            results: result.results || {}
-                        });
-                    } else {
-                        setToxicityWarning(null);
-                    }
-                }
-            } catch (err) {
-                console.error("Error checking toxicity:", err);
-                setToxicityWarning(null);
-            } finally {
-                setIsCheckingToxicity(false);
-                toxicityCheckInProgress.current = false;
-            }
-        }, 500);
+            // Mark content as checked
+            setIsContentChecked(true);
+        } catch (err) {
+            console.error("Error checking toxicity:", err);
+            setToxicityWarning(null);
+        } finally {
+            setIsCheckingToxicity(false);
+        }
     };
 
-    // Updated submit handler with enhanced toxicity handling
+    // Updated submit handler
     const handleSubmit = async(e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         
         if (!post.caption.trim()) {
+            return;
+        }
+        
+        // If content hasn't been checked yet, check it first
+        if (!isContentChecked) {
+            await handleCheckContent();
             return;
         }
         
@@ -283,9 +263,8 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
             if (toxicityCache.current.has(post.caption)) {
                 toxicityResult = toxicityCache.current.get(post.caption);
             } else {
-                setIsCheckingToxicity(true);
+                // Should not reach here as content should already be checked
                 toxicityResult = await performToxicityCheck(post.caption);
-                setIsCheckingToxicity(false);
             }
             
             // Extract all required data from the toxicity result
@@ -307,6 +286,8 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
             console.error("Error during post submission:", error);
         } finally {
             setIsSubmitting(false);
+            // Reset checked state after posting
+            setIsContentChecked(false);
         }
     };
 
@@ -502,16 +483,13 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
         }
         
         // Show success indicator if content has been checked and is safe
-        if (toxicityCache.current.has(post.caption)) {
-            const result = toxicityCache.current.get(post.caption);
-            if (!result.summary.is_toxic) {
-                return (
-                    <div className="flex items-center text-xs text-green-500 mt-1">
-                        <Check className="h-3 w-3 mr-1" />
-                        <span>Content checked</span>
-                    </div>
-                );
-            }
+        if (isContentChecked) {
+            return (
+                <div className="flex items-center text-xs text-green-500 mt-1">
+                    <Check className="h-3 w-3 mr-1" />
+                    <span>Content checked</span>
+                </div>
+            );
         }
         
         return null;
@@ -575,7 +553,7 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
                                 type='submit'
                                 disabled={isSubmitting || isCheckingToxicity}
                             >
-                                {isCheckingToxicity ? 'Checking...' : isSubmitting ? 'Posting...' : 'Post'}
+                                {isCheckingToxicity ? 'Checking...' : isContentChecked ? 'Post' : 'Check'}
                             </Button>
                         </form>
                     </div>
