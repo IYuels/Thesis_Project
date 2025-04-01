@@ -151,7 +151,7 @@ const CreatePost: React.FunctionComponent<ICreatePostProps> = () => {
                     censoredText = toxicityResult.censored_text;
                 } else {
                     // Get censored text with selected level
-                    const censorResult = await censorText(post.caption, censorLevel);
+                    const censorResult = await censorText(post.caption);
                     censoredText = censorResult.censored_text;
                 }
             }
