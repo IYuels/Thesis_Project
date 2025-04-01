@@ -106,20 +106,7 @@ const ToxicityWarningModal = ({
                   if (!aIsNotToxic && bIsNotToxic) return 1;
                   return b[1].probability - a[1].probability;
                 })
-                .map(([category, values]) => {
-                  // Check if category contains NOT_TOXIC (case insensitive)
-                  const isNotToxic = category.toUpperCase().includes("NOT_TOXIC");
-                  
-                  // Determine text color based on probability and whether detected
-                  let textColorClass = "text-gray-600";
-                  if (!isNotToxic) {
-                    if (values.probability > 0.7) textColorClass = "text-red-600 font-bold";
-                    else if (values.probability > 0.5) textColorClass = "text-red-500";
-                    else if (values.probability > 0.3) textColorClass = "text-yellow-600";
-                  } else {
-                    textColorClass = "text-green-600";
-                  }
-                  
+                .map(([category]) => {
                   return (
                     <div key={category} className="flex items-center justify-between">
                     </div>
