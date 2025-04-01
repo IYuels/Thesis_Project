@@ -201,7 +201,7 @@ const Login: React.FunctionComponent<ILoginProps> = () => {
                 </CardContent>
                 <CardFooter className="flex flex-col">
                   <p className="mt-3 text-sm text-center">
-                    Don't have an account? <Link to="/signup">Sign Up</Link>
+                    Don't have an account? <Link className="text-blue-500" to="/signup">Sign Up</Link>
                   </p>
                 </CardFooter>
               </form>
