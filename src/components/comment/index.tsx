@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useUserAuth } from '@/context/userAuthContext';
-import { Comment, ToxicityData} from '@/types';
+import { Comment } from '@/types';
 import { deleteComment, updateLikesOnComment } from '@/repository/comment.service';
 import { cn } from '@/lib/utils';
 import { CardContent, CardHeader, CardTitle } from '../ui/card';
@@ -10,8 +10,9 @@ import {
   EyeIcon, 
   EyeOffIcon, 
   ClockIcon, 
-  AlertCircle,
-  MoreVertical
+  MoreVertical,
+  ShieldAlert,
+  ShieldCheck
 } from 'lucide-react';
 import avatar from "@/assets/images/avatar.png";
 import ToxicityWarningModal from '../toxicityWarningModal';
@@ -34,6 +35,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Badge } from "@/components/ui/badge";
 
 interface ICommentCardProps {
     data: Comment;
@@ -48,7 +50,6 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data, onDelet
     const [showToxicityWarningModal, setShowToxicityWarningModal] = React.useState(false);
     const { user, userProfile } = useUserAuth();
     const [showOriginalContent, setShowOriginalContent] = React.useState(false);
-    // Add state for delete confirmation dialog
     const [showDeleteModal, setShowDeleteModal] = React.useState(false);
     
     // Store the full profile response from subscription
@@ -86,16 +87,42 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data, onDelet
         };
     }, [data.userID, data.username, data.photoURL]);
 
-    // Enhanced toxicity check - handles different toxicity levels
-    const hasToxicity = data.toxicity && data.toxicity.is_toxic === true;
+    // Enhanced toxicity detection using ToxicityData from types.ts
+    const hasToxicity = React.useMemo(() => {
+        return Boolean(data.toxicity && 
+               typeof data.toxicity === 'object' && 
+               data.toxicity.is_toxic === true);
+    }, [data.toxicity]);
     
-    // Get toxicity level for visual indicators
+    // Get toxicity level using the standardized format from types.ts
     const getToxicityLevel = (): 'not toxic' | 'toxic' | 'very toxic' => {
-        if (!data.toxicity || !data.toxicity.is_toxic) {
+        if (!data.toxicity || typeof data.toxicity !== 'object') {
             return 'not toxic';
         }
         
-        return data.toxicity.toxicity_level || 'toxic';
+        const level = data.toxicity.toxicity_level;
+        if (level === 'toxic' || level === 'very toxic') {
+            return level;
+        }
+        
+        return 'not toxic';
+    };
+    
+    // Get detected categories from toxicity data
+    const getDetectedCategories = (): string[] => {
+        if (!data.toxicity) {
+            return [];
+        }
+        
+        if (typeof data.toxicity !== 'object') {
+            return [];
+        }
+        
+        if (!Array.isArray(data.toxicity.detected_categories)) {
+            return [];
+        }
+        
+        return data.toxicity.detected_categories;
     };
     
     // Get appropriate toxicity icon based on level
@@ -104,11 +131,11 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data, onDelet
         
         switch (level) {
             case 'very toxic':
-                return <AlertTriangle className="h-5 w-5 text-yellow-500" />;
+                return <ShieldAlert className="h-5 w-5 text-red-500" />;
             case 'toxic':
                 return <AlertTriangle className="h-5 w-5 text-yellow-500" />;
             default:
-                return <AlertCircle className="h-5 w-5 text-blue-500" />;
+                return <ShieldCheck className="h-5 w-5 text-green-500" />;
         }
     };
     
@@ -124,14 +151,16 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data, onDelet
             case 'toxic':
                 return "bg-yellow-50 p-1 rounded";
             default:
-                return "bg-gray-50 p-1 rounded";
+                return "";
         }
     };
     
     // Check if we actually have different original content
-    const hasOriginalContent = data.originalCaption !== undefined && 
-                          data.originalCaption !== null && 
-                          data.originalCaption !== data.caption;
+    const hasOriginalContent = React.useMemo(() => {
+        return data.originalCaption !== undefined && 
+              data.originalCaption !== null && 
+              data.originalCaption !== data.caption;
+    }, [data.originalCaption, data.caption]);
     
     // Enhanced debug info for toxicity
     React.useEffect(() => {
@@ -143,6 +172,7 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data, onDelet
                 hasToxicity,
                 hasOriginalContent,
                 toxicityLevel: getToxicityLevel(),
+                detectedCategories: getDetectedCategories(),
                 toxicityInfo: data.toxicity
             });
         }
@@ -245,14 +275,18 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data, onDelet
     // Get tooltip text based on toxicity level
     const getToxicityTooltip = () => {
         const level = getToxicityLevel();
+        const categories = getDetectedCategories();
+        const categoryText = categories.length > 0 
+            ? `Detected: ${categories.join(', ')}`
+            : '';
         
         switch (level) {
             case 'very toxic':
-                return "Very Toxic Content - Click for details";
+                return `Very Toxic Content ${categoryText ? '- ' + categoryText : ''} - Click for details`;
             case 'toxic':
-                return "Potentially Toxic Content - Click for details";
+                return `Potentially Toxic Content ${categoryText ? '- ' + categoryText : ''} - Click for details`;
             default:
-                return "Content Warning - Click for details";
+                return "Content passed moderation checks";
         }
     };
 
@@ -299,24 +333,22 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data, onDelet
                     )}
                     
                     {/* Toxicity indicator */}
-                    {hasToxicity && (
-                        <TooltipProvider>
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <button 
-                                        onClick={() => setShowToxicityWarningModal(true)}
-                                        className="focus:outline-none"
-                                        title="Content warning"
-                                    >
-                                        {getToxicityIcon()}
-                                    </button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                    <p>{getToxicityTooltip()}</p>
-                                </TooltipContent>
-                            </Tooltip>
-                        </TooltipProvider>
-                    )}
+                    <TooltipProvider>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <button 
+                                    onClick={() => hasToxicity ? setShowToxicityWarningModal(true) : undefined}
+                                    className="focus:outline-none"
+                                    title="Content moderation status"
+                                >
+                                    {getToxicityIcon()}
+                                </button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                                <p>{getToxicityTooltip()}</p>
+                            </TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
 
                     {/* Replace X icon with 3-dot menu button */}
                     {user?.uid === data.userID && (
@@ -343,6 +375,24 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data, onDelet
             </CardHeader>
 
             <CardContent className="p-0 mt-2">
+                {/* Show toxicity badges if toxic */}
+                {hasToxicity && getDetectedCategories().length > 0 && (
+                    <div className="mb-2 flex flex-wrap gap-1">
+                        {getDetectedCategories().map((category, index) => (
+                            <Badge 
+                                key={index} 
+                                variant="outline" 
+                                className={getToxicityLevel() === 'very toxic' 
+                                    ? 'text-red-600 border-red-300 bg-red-50' 
+                                    : 'text-yellow-600 border-yellow-300 bg-yellow-50'
+                                }
+                            >
+                                {category.replace(/-/g, ' ')}
+                            </Badge>
+                        ))}
+                    </div>
+                )}
+                
                 {/* Mobile-friendly comment content */}
                 <div className="break-words">
                     <p className="text-sm sm:text-base text-gray-700">
@@ -389,11 +439,13 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data, onDelet
             </CardContent>
             
             {/* Toxicity Warning Modal */}
-            <ToxicityWarningModal
-                isOpen={showToxicityWarningModal}
-                onClose={() => setShowToxicityWarningModal(false)}
-                toxicityData={data.toxicity as ToxicityData}
-            />
+            {data.toxicity && (
+                <ToxicityWarningModal
+                    isOpen={showToxicityWarningModal}
+                    onClose={() => setShowToxicityWarningModal(false)}
+                    toxicityData={data.toxicity}
+                />
+            )}
 
             {/* Delete Comment Confirmation Modal */}
             <AlertDialog open={showDeleteModal} onOpenChange={setShowDeleteModal}>

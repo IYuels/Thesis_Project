@@ -8,8 +8,7 @@ import { checkToxicity, censorText } from '@/repository/toxicity.service';
 import { Post, ToxicityData, CensorLevel } from '@/types';
 import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, ShieldAlert, Check } from 'lucide-react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AlertTriangle, ShieldAlert, Check, AlertCircle } from 'lucide-react';
 import ToxicityWarningModal from '@/components/toxicityWarningModal';
 
 interface ICreatePostProps {}
@@ -22,12 +21,13 @@ const CreatePost: React.FunctionComponent<ICreatePostProps> = () => {
     const [isCheckingToxicity, setIsCheckingToxicity] = React.useState(false);
     const [isSubmitting, setIsSubmitting] = React.useState(false);
     const [toxicityWarning, setToxicityWarning] = React.useState<ToxicityData | null>(null);
-    const [censorLevel, setCensorLevel] = React.useState<CensorLevel>(CensorLevel.AUTO);
+    const [censorLevel] = React.useState<CensorLevel>(CensorLevel.AUTO);
     const [showToxicityWarningModal, setShowToxicityWarningModal] = React.useState(false);
+    const [hasBeenChecked, setHasBeenChecked] = React.useState(false);
     
     // References for toxicity checking
     const toxicityTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
-    const toxicityCache = React.useRef<Map<string, any>>(new Map());
+    const toxicityCache = React.useRef<Map<string, ToxicityData>>(new Map());
     
     const [post, setPost] = React.useState<Post>({
         id: "",
@@ -52,6 +52,9 @@ const CreatePost: React.FunctionComponent<ICreatePostProps> = () => {
             clearTimeout(toxicityTimeoutRef.current);
         }
         
+        // Reset checked status on content change
+        setHasBeenChecked(false);
+        
         // Skip empty text check
         if (!newCaption.trim()) {
             setIsCheckingToxicity(false);
@@ -59,49 +62,51 @@ const CreatePost: React.FunctionComponent<ICreatePostProps> = () => {
             return;
         }
         
-        // Debounced toxicity check
-        toxicityTimeoutRef.current = setTimeout(async () => {
-            // Use cache if available
-            if (toxicityCache.current.has(newCaption)) {
-                const cachedResult = toxicityCache.current.get(newCaption);
-                if (cachedResult.summary.is_toxic) {
-                    setToxicityWarning({
-                        is_toxic: cachedResult.summary.is_toxic,
-                        toxicity_level: cachedResult.summary.toxicity_level || 'toxic',
-                        detected_categories: cachedResult.summary.detected_categories || [],
-                        results: cachedResult.results || {},
-                        censored_text: cachedResult.censored_text
-                    });
-                } else {
-                    setToxicityWarning(null);
+        // Debounced toxicity check with minimum text length
+        if (newCaption.trim().length > 3) {
+            toxicityTimeoutRef.current = setTimeout(async () => {
+                // Use cache if available
+                if (toxicityCache.current.has(newCaption)) {
+                    const cachedResult = toxicityCache.current.get(newCaption);
+                    if (cachedResult && cachedResult.is_toxic) {
+                        setToxicityWarning(cachedResult);
+                    } else {
+                        setToxicityWarning(null);
+                    }
+                    setHasBeenChecked(true);
+                    return;
                 }
-                return;
-            }
-            
-            setIsCheckingToxicity(true);
-            
-            try {
-                const result = await checkToxicity(newCaption);
-                toxicityCache.current.set(newCaption, result);
                 
-                if (result.summary.is_toxic) {
-                    setToxicityWarning({
+                setIsCheckingToxicity(true);
+                
+                try {
+                    const result = await checkToxicity(newCaption);
+                    
+                    // Convert to ToxicityData format expected by the component
+                    const toxicityData: ToxicityData = {
                         is_toxic: result.summary.is_toxic,
-                        toxicity_level: result.summary.toxicity_level || 'toxic',
+                        toxicity_level: result.summary.toxicity_level,
                         detected_categories: result.summary.detected_categories || [],
                         results: result.results || {},
                         censored_text: result.censored_text
-                    });
-                } else {
+                    };
+                    
+                    toxicityCache.current.set(newCaption, toxicityData);
+                    
+                    if (toxicityData.is_toxic) {
+                        setToxicityWarning(toxicityData);
+                    } else {
+                        setToxicityWarning(null);
+                    }
+                    setHasBeenChecked(true);
+                } catch (error) {
+                    console.error("Error checking toxicity:", error);
                     setToxicityWarning(null);
+                } finally {
+                    setIsCheckingToxicity(false);
                 }
-            } catch (error) {
-                console.error("Error checking toxicity:", error);
-                setToxicityWarning(null);
-            } finally {
-                setIsCheckingToxicity(false);
-            }
-        }, 500);
+            }, 500);
+        }
     };
 
     // Updated submit handler with toxicity handling
@@ -116,55 +121,62 @@ const CreatePost: React.FunctionComponent<ICreatePostProps> = () => {
         setIsSubmitting(true);
         
         try {
-            let toxicityResult;
+            let toxicityData: ToxicityData;
             let isToxic = false;
             let censoredText = post.caption;
             let originalText = null;
             
             // Check for cached toxicity result
             if (toxicityCache.current.has(post.caption)) {
-                toxicityResult = toxicityCache.current.get(post.caption);
-                isToxic = toxicityResult.summary.is_toxic;
+                toxicityData = toxicityCache.current.get(post.caption)!;
+                isToxic = toxicityData.is_toxic;
             } else {
                 // Check toxicity if not cached
                 setIsCheckingToxicity(true);
-                toxicityResult = await checkToxicity(post.caption);
+                const toxicityResult = await checkToxicity(post.caption);
                 setIsCheckingToxicity(false);
-                toxicityCache.current.set(post.caption, toxicityResult);
-                isToxic = toxicityResult.summary.is_toxic;
+                
+                // Convert to ToxicityData format
+                toxicityData = {
+                    is_toxic: toxicityResult.summary.is_toxic,
+                    toxicity_level: toxicityResult.summary.toxicity_level,
+                    detected_categories: toxicityResult.summary.detected_categories || [],
+                    results: toxicityResult.results || {},
+                    censored_text: toxicityResult.censored_text
+                };
+                
+                toxicityCache.current.set(post.caption, toxicityData);
+                isToxic = toxicityData.is_toxic;
             }
-            
-            // Create toxicity data for the post
-            const toxicityData: ToxicityData = {
-                is_toxic: isToxic,
-                toxicity_level: toxicityResult.summary.toxicity_level || 'not toxic',
-                detected_categories: toxicityResult.summary.detected_categories || [],
-                results: toxicityResult.results || {},
-                censored_text: toxicityResult.censored_text
-            };
             
             // Handle censoring for toxic content
             if (isToxic) {
                 originalText = post.caption;
                 
-                if (toxicityResult.censored_text) {
-                    censoredText = toxicityResult.censored_text;
+                if (censorLevel === CensorLevel.AUTO && toxicityData.censored_text) {
+                    censoredText = toxicityData.censored_text;
                 } else {
                     // Get censored text with selected level
                     const censorResult = await censorText(post.caption);
                     censoredText = censorResult.censored_text;
+                }
+                
+                // Update censored_text in toxicityData if it changed
+                if (censoredText !== toxicityData.censored_text) {
+                    toxicityData.censored_text = censoredText;
                 }
             }
             
             // Create the new post with toxicity data
             const newPost: Post = {
                 ...post,
-                caption: censoredText,
+                caption: isToxic ? censoredText : post.caption,
                 originalCaption: isToxic ? originalText : null,
                 userID: user.uid,
                 username: user.displayName!,
                 photoURL: user.photoURL!,
-                toxicity: toxicityData
+                toxicity: toxicityData,
+                date: new Date()
             };
             
             await createPost(newPost);
@@ -196,28 +208,44 @@ const CreatePost: React.FunctionComponent<ICreatePostProps> = () => {
                 switch (toxicityWarning.toxicity_level) {
                     case 'very toxic':
                         return (
-                            <div className="flex items-center text-sm text-red-500 mt-2">
+                            <div className="flex items-center text-sm text-red-600 mt-2">
                                 <ShieldAlert className="h-4 w-4 mr-2" />
-                                <span>Very toxic content detected - will be censored when posted</span>
+                                <span>
+                                    <strong>High toxicity detected:</strong> {toxicityWarning.detected_categories.join(', ')}
+                                </span>
                                 <button 
                                     onClick={() => setShowToxicityWarningModal(true)}
-                                    className="ml-2 text-xs text-blue-500 hover:text-blue-700 underline"
+                                    className="ml-2 text-xs text-blue-600 hover:text-blue-800 underline"
                                 >
-                                    View details
+                                    Details
                                 </button>
                             </div>
                         );
                     case 'toxic':
-                    default:
                         return (
-                            <div className="flex items-center text-sm text-yellow-500 mt-2">
+                            <div className="flex items-center text-sm text-amber-600 mt-2">
                                 <AlertTriangle className="h-4 w-4 mr-2" />
-                                <span>Potentially inappropriate content - will be censored when posted</span>
+                                <span>
+                                    <strong>Potentially inappropriate:</strong> {toxicityWarning.detected_categories.join(', ')}
+                                </span>
                                 <button 
                                     onClick={() => setShowToxicityWarningModal(true)}
-                                    className="ml-2 text-xs text-blue-500 hover:text-blue-700 underline"
+                                    className="ml-2 text-xs text-blue-600 hover:text-blue-800 underline"
                                 >
-                                    View details
+                                    Details
+                                </button>
+                            </div>
+                        );
+                    default:
+                        return (
+                            <div className="flex items-center text-sm text-yellow-600 mt-2">
+                                <AlertCircle className="h-4 w-4 mr-2" />
+                                <span>Content flagged - will be reviewed</span>
+                                <button 
+                                    onClick={() => setShowToxicityWarningModal(true)}
+                                    className="ml-2 text-xs text-blue-600 hover:text-blue-800 underline"
+                                >
+                                    Details
                                 </button>
                             </div>
                         );
@@ -228,50 +256,18 @@ const CreatePost: React.FunctionComponent<ICreatePostProps> = () => {
         }
         
         // Show success indicator if content has been checked and is safe
-        if (post.caption.trim().length > 10 && toxicityCache.current.has(post.caption)) {
-            const result = toxicityCache.current.get(post.caption);
-            if (!result.summary.is_toxic) {
-                return (
-                    <div className="flex items-center text-sm text-green-500 mt-2">
-                        <Check className="h-4 w-4 mr-2" />
-                        <span>Content checked - no issues detected</span>
-                    </div>
-                );
-            }
+        if (post.caption.trim().length > 3 && hasBeenChecked) {
+            return (
+                <div className="flex items-center text-sm text-green-600 mt-2">
+                    <Check className="h-4 w-4 mr-2" />
+                    <span>Content checked - no issues detected</span>
+                </div>
+            );
         }
         
         return null;
     };
     
-    // Censor level selector component
-    const CensorLevelSelector = () => {
-        if (!toxicityWarning) return null;
-        
-        return (
-            <div className="mt-4">
-                <Label className="text-sm mb-2 block">Censoring level:</Label>
-                <Select
-                    value={censorLevel}
-                    onValueChange={(value) => setCensorLevel(value as CensorLevel)}
-                >
-                    <SelectTrigger className="w-[200px]">
-                        <SelectValue placeholder="Select censoring level" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value={CensorLevel.AUTO}>Auto (Based on detection)</SelectItem>
-                        <SelectItem value={CensorLevel.LIGHT}>Light (Severe terms only)</SelectItem>
-                        <SelectItem value={CensorLevel.MEDIUM}>Medium (Most inappropriate content)</SelectItem>
-                        <SelectItem value={CensorLevel.HEAVY}>Heavy (All potentially inappropriate content)</SelectItem>
-                    </SelectContent>
-                </Select>
-                <p className="text-xs text-gray-500 mt-1">
-                    Select how strictly you want inappropriate content to be censored
-                </p>
-            </div>
-        );
-    };
-    
-    // Cleanup on unmount
     React.useEffect(() => {
         return () => {
             if (toxicityTimeoutRef.current) {
@@ -301,17 +297,18 @@ const CreatePost: React.FunctionComponent<ICreatePostProps> = () => {
                                 
                                 {/* Toxicity status indicator */}
                                 <ToxicityStatusIndicator />
-                                
-                                {/* Censor level selector */}
-                                <CensorLevelSelector />
                             </div>
                             <Button 
                                 className='mt-6 w-32' 
                                 type='submit'
-                                disabled={isSubmitting || isCheckingToxicity}
+                                disabled={isSubmitting || isCheckingToxicity || (post.caption.trim().length > 0 && !hasBeenChecked)}
                             >
                                 {isCheckingToxicity ? 'Checking...' : isSubmitting ? 'Posting...' : 'Post'}
                             </Button>
+                            
+                            {post.caption.trim().length > 0 && !hasBeenChecked && !isCheckingToxicity && (
+                                <p className="text-xs text-gray-500 mt-2">Your content is being checked before posting</p>
+                            )}
                         </form>
                     </div>
                 </div>
