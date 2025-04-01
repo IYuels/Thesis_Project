@@ -122,10 +122,6 @@ const ToxicityWarningModal = ({
                   
                   return (
                     <div key={category} className="flex items-center justify-between">
-                      <span className="truncate pr-2">{getCategoryDisplayName(category)}:</span>
-                      <span className={`font-medium ${textColorClass}`}>
-                        {Math.round(values.probability * 100)}%
-                      </span>
                     </div>
                   );
                 })
