@@ -7,6 +7,7 @@ import { subscribeToNotifications, markNotificationAsRead } from '@/repository/n
 import { subscribeToUserProfile } from '@/repository/user.service';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import avatar from "@/assets/images/avatar.png";
 
 interface NotificationToastProps {
   className?: string;
@@ -221,7 +222,7 @@ const NotificationToast: React.FC<NotificationToastProps> = ({ className }) => {
                   >
                     <div className="flex-shrink-0 mr-3">
                       <img 
-                        src={photoURL} 
+                        src={photoURL ? photoURL : avatar} // Fallback to default avatar if no photoURL
                         alt={displayName}
                         className="w-8 h-8 rounded-full object-cover"
                       />
