@@ -16,7 +16,7 @@ export interface FileEntry {
     files: OutputFileEntry[];
 }
 
-// Enhanced toxicity interface based on appv3 model
+// Enhanced toxicity interface based on FastAPI model
 export interface ToxicityData {
     is_toxic: boolean;
     toxicity_level: 'not toxic' | 'toxic' | 'very toxic'; 
@@ -26,8 +26,8 @@ export interface ToxicityData {
         is_detected: boolean;
     }>;
     raw_probabilities?: Record<string, number>;
-    // Add the censored_text property that was missing
     censored_text?: string | null;
+    censored_words?: string[]; // Added from FastAPI response
 }
 
 export interface Post {
@@ -124,7 +124,20 @@ export enum NotificationType {
     COMMENT = 'COMMENT',
 }
 
-// New enums for censoring levels
+// Updated API request interface based on FastAPI
+export interface ToxicityPredictionRequest {
+    text: string;
+}
+
+// Updated API response interface based on FastAPI
+export interface ToxicityPredictionResponse {
+    original_text: string;
+    censored_text: string;
+    predictions: Record<string, number>;
+    censored_words: string[];
+}
+
+// Censor levels for your application
 export enum CensorLevel {
     AUTO = 'auto',
     LIGHT = 'light',
@@ -132,10 +145,11 @@ export enum CensorLevel {
     HEAVY = 'heavy'
 }
 
-// Categories that match the backend model
+// Categories that match the FastAPI model's output categories
 export enum ToxicityCategory {
     OBSCENITY = 'obscenity/profanity',
     INSULTS = 'insults',
     THREATENING = 'threatening',
     IDENTITY_BASED = 'identity-based negativity'
+    // Add or modify categories based on your model's output
 }

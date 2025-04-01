@@ -5,7 +5,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useUserAuth } from '@/context/userAuthContext';
 import { createPost, getPosts } from '@/repository/post.service';
 import { checkToxicity, censorText} from '@/repository/toxicity.service';
-import { DocumentResponse, Post, ToxicityData, CensorLevel } from '@/types';
+import { DocumentResponse, Post, ToxicityData } from '@/types';
 import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -25,7 +25,6 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
     const [page, setPage] = React.useState(1);
     const [sortFilter, setSortFilter] = React.useState("latest");
     const [allPosts, setAllPosts] = React.useState<DocumentResponse[]>([]);
-    const [censorLevel] = React.useState<CensorLevel>(CensorLevel.AUTO);
     const [isContentChecked, setIsContentChecked] = React.useState(false);
     const postsPerPage = 5;
     
@@ -300,7 +299,7 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
         
         try {
             // Use the censor level setting
-            const result = await censorText(text, censorLevel);
+            const result = await censorText(text);
             return result.censored_text;
         } catch (error) {
             console.error("Error censoring text:", error);

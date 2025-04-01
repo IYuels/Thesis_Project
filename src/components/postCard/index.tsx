@@ -1,5 +1,5 @@
 import { useUserAuth } from '@/context/userAuthContext';
-import { Comment, DocumentResponse, NotificationType, ToxicityData, CensorLevel } from '@/types';
+import { Comment, DocumentResponse, NotificationType, ToxicityData } from '@/types';
 import * as React from 'react';
 import { Card, CardContent, CardFooter, CardHeader } from '../ui/card';
 import { MessageCircleMore, ThumbsUpIcon, AlertTriangle, EyeOffIcon, EyeIcon, ClockIcon, MoreVertical} from 'lucide-react';
@@ -43,7 +43,6 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
     const toxicityCache = React.useRef<Map<string, any>>(new Map());
     const [isCheckingToxicity, setIsCheckingToxicity] = React.useState(false);
     const [showToxicityWarningModal, setShowToxicityWarningModal] = React.useState(false);
-    const [censorLevel] = React.useState<CensorLevel>(CensorLevel.AUTO);
     const [isContentChecked, setIsContentChecked] = React.useState(false);
     
     // Comment state
@@ -232,7 +231,7 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
         try {
             // Add a timeout for the censor call and use selected censor level
             const result = await Promise.race([
-                censorText(text, censorLevel),
+                censorText(text),
                 new Promise<{censored_text: string}>((resolve) => 
                     setTimeout(() => resolve({censored_text: text}), 3000)
                 )
