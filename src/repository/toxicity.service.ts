@@ -1,6 +1,3 @@
-// Enhanced toxicity service with thresholds matching the backend API
-// This should be placed in toxicity.service.ts
-
 interface ToxicityPrediction {
   original_text: string;
   censored_text: string;
@@ -31,13 +28,17 @@ export type ToxicityData = ToxicityResult;
 // Direct API URL configuration - update with your FastAPI URL
 const API_BASE_URL = 'http://127.0.0.1:8000/';
 
-// Optimized thresholds matching the backend optimal_thresholds.json
+// Updated optimized thresholds with the new values provided
 const OPTIMIZED_THRESHOLDS: Record<string, number> = {
-  'obscenity/profanity': 0.6,
-  'insults': 0.5,
-  'threatening': 0.4,
-  'identity-based negativity': 0.3
+  'toxic': 0.4596308767795563,
+  'insult': 0.4288865029811859, 
+  'profanity': 0.4403560161590576, 
+  'threat': 0.55, 
+  'identity hate': 0.5118075013160706
 };
+
+// Also add a specific threshold for very_toxic classification
+const VERY_TOXIC_THRESHOLD = 0.7;
 
 /**
  * Enhanced toxicity check with proper error handling, timeouts,
@@ -178,25 +179,18 @@ const transformFastAPIResponse = (data: ToxicityPrediction): ToxicityResult => {
     .filter(([_, value]) => value.is_detected)
     .map(([key]) => key);
   
-  // Determine overall toxicity level with enhanced logic
+  // Determine overall toxicity level using the updated logic with specific threshold
   const isToxic = detectedCategories.length > 0;
   let toxicityLevel: 'not toxic' | 'toxic' | 'very toxic' = 'not toxic';
   
   if (isToxic) {
-    // Enhanced "very toxic" detection logic:
-    // 1. Check if any category exceeds its threshold by a significant margin (20%)
-    // 2. Check if multiple categories are detected simultaneously
-    const hasHighToxicity = Object.entries(results).some(([key, value]) => {
-      if (!value.is_detected) return false;
-      
-      const threshold = OPTIMIZED_THRESHOLDS[key] ?? 0.5;
-      
-      return value.probability >= threshold + 0.2; // 20% above threshold
-    });
+    // Check for "very toxic" using the specific very_toxic threshold
+    // Look for any category with probability above the VERY_TOXIC_THRESHOLD
+    const hasVeryHighToxicity = Object.values(results).some(value => 
+      value.probability >= VERY_TOXIC_THRESHOLD
+    );
     
-    const hasMultipleCategories = detectedCategories.length >= 2;
-    
-    toxicityLevel = (hasHighToxicity || hasMultipleCategories) ? 'very toxic' : 'toxic';
+    toxicityLevel = hasVeryHighToxicity ? 'very toxic' : 'toxic';
   }
   
   return {
@@ -216,17 +210,18 @@ const transformFastAPIResponse = (data: ToxicityPrediction): ToxicityResult => {
 const mapCategoryName = (category: string): string => {
   // This mapping should match your expected categories in the frontend
   const categoryMapping: Record<string, string> = {
-    'class_0': 'obscenity/profanity',
-    'class_1': 'insults',
-    'class_2': 'threatening',
-    'class_3': 'identity-based negativity',
-    // Add more mappings as needed based on your model's classes
+    'class_0': 'toxic',
+    'class_1': 'insult',
+    'class_2': 'profanity',
+    'class_3': 'threat',
+    'class_4': 'identity hate',
     
     // If the FastAPI is already using the right names, use these:
-    'obscenity/profanity': 'obscenity/profanity',
-    'insults': 'insults',
-    'threatening': 'threatening',
-    'identity-based negativity': 'identity-based negativity'
+    'toxic': 'toxic',
+    'insult': 'insult',
+    'profanity': 'profanity',
+    'threat': 'threat',
+    'identity hate': 'identity hate'
   };
   
   return categoryMapping[category] || category;
