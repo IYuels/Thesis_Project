@@ -1,3 +1,6 @@
+// Enhanced toxicity service with thresholds matching the backend API
+// This should be placed in toxicity.service.ts
+
 interface ToxicityPrediction {
   original_text: string;
   censored_text: string;
@@ -27,6 +30,14 @@ export type ToxicityData = ToxicityResult;
 
 // Direct API URL configuration - update with your FastAPI URL
 const API_BASE_URL = 'http://127.0.0.1:8000/';
+
+// Optimized thresholds matching the backend optimal_thresholds.json
+const OPTIMIZED_THRESHOLDS: Record<string, number> = {
+  'obscenity/profanity': 0.6,
+  'insults': 0.5,
+  'threatening': 0.4,
+  'identity-based negativity': 0.3
+};
 
 /**
  * Enhanced toxicity check with proper error handling, timeouts,
@@ -151,11 +162,14 @@ const transformFastAPIResponse = (data: ToxicityPrediction): ToxicityResult => {
   const results: Record<string, { probability: number; is_detected: boolean }> = {};
   
   Object.entries(rawProbabilities).forEach(([category, probability]) => {
-    // Use the optimized_thresholds from the FastAPI to determine if detected
-    // For simplicity, we'll use 0.5 as default threshold
-    results[mapCategoryName(category)] = {
+    const mappedCategory = mapCategoryName(category);
+    
+    // Use the optimized threshold if available, otherwise use the default 0.5
+    const threshold = OPTIMIZED_THRESHOLDS[mappedCategory] ?? 0.5;
+    
+    results[mappedCategory] = {
       probability,
-      is_detected: probability >= 0.5
+      is_detected: probability >= threshold
     };
   });
   
@@ -164,14 +178,25 @@ const transformFastAPIResponse = (data: ToxicityPrediction): ToxicityResult => {
     .filter(([_, value]) => value.is_detected)
     .map(([key]) => key);
   
-  // Determine overall toxicity level
+  // Determine overall toxicity level with enhanced logic
   const isToxic = detectedCategories.length > 0;
   let toxicityLevel: 'not toxic' | 'toxic' | 'very toxic' = 'not toxic';
   
   if (isToxic) {
-    // Check if any category has very high probability (0.8+)
-    const hasHighToxicity = Object.values(results).some(r => r.probability >= 0.8 && r.is_detected);
-    toxicityLevel = hasHighToxicity ? 'very toxic' : 'toxic';
+    // Enhanced "very toxic" detection logic:
+    // 1. Check if any category exceeds its threshold by a significant margin (20%)
+    // 2. Check if multiple categories are detected simultaneously
+    const hasHighToxicity = Object.entries(results).some(([key, value]) => {
+      if (!value.is_detected) return false;
+      
+      const threshold = OPTIMIZED_THRESHOLDS[key] ?? 0.5;
+      
+      return value.probability >= threshold + 0.2; // 20% above threshold
+    });
+    
+    const hasMultipleCategories = detectedCategories.length >= 2;
+    
+    toxicityLevel = (hasHighToxicity || hasMultipleCategories) ? 'very toxic' : 'toxic';
   }
   
   return {
