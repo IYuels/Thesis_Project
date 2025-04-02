@@ -35,7 +35,6 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Badge } from "@/components/ui/badge";
 
 interface ICommentCardProps {
     data: Comment;
@@ -375,24 +374,7 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data, onDelet
             </CardHeader>
 
             <CardContent className="p-0 mt-2">
-                {/* Show toxicity badges if toxic */}
-                {hasToxicity && getDetectedCategories().length > 0 && (
-                    <div className="mb-2 flex flex-wrap gap-1">
-                        {getDetectedCategories().map((category, index) => (
-                            <Badge 
-                                key={index} 
-                                variant="outline" 
-                                className={getToxicityLevel() === 'very toxic' 
-                                    ? 'text-red-600 border-red-300 bg-red-50' 
-                                    : 'text-yellow-600 border-yellow-300 bg-yellow-50'
-                                }
-                            >
-                                {category.replace(/-/g, ' ')}
-                            </Badge>
-                        ))}
-                    </div>
-                )}
-                
+               
                 {/* Mobile-friendly comment content */}
                 <div className="break-words">
                     <p className="text-sm sm:text-base text-gray-700">
