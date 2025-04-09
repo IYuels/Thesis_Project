@@ -1,12 +1,20 @@
-interface ToxicityPrediction {
+// Input/Output types that match the FastAPI models
+interface TextInput {
+  text: string;
+  censor?: boolean;
+  return_scores?: boolean;
+}
+
+interface FastAPIPredictionOutput {
   original_text: string;
-  censored_text: string;
-  predictions: Record<string, number>;
+  censored_text: string | null;
+  predictions: Record<string, boolean>;
+  scores?: Record<string, number> | null;
+  contains_profanity: boolean;
   censored_words: string[];
 }
 
 // Standardized API response for our frontend
-// Using ToxicityData from types.ts for consistency
 export interface ToxicityResult {
   results: Record<string, {
     probability: number;
@@ -28,16 +36,7 @@ export type ToxicityData = ToxicityResult;
 // Direct API URL configuration - update with your FastAPI URL
 const API_BASE_URL = 'http://127.0.0.1:8000/';
 
-// Updated optimized thresholds with the new values provided
-const OPTIMIZED_THRESHOLDS: Record<string, number> = {
-  'toxic': 0.4596308767795563,
-  'insult': 0.4288865029811859, 
-  'profanity': 0.4403560161590576, 
-  'threat': 0.55, 
-  'identity hate': 0.5118075013160706
-};
-
-// Also add a specific threshold for very_toxic classification
+// Define thresholds for very toxic classification 
 const VERY_TOXIC_THRESHOLD = 0.7;
 
 /**
@@ -54,14 +53,18 @@ export const checkToxicity = async (text: string): Promise<ToxicityResult> => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
 
+    const requestBody: TextInput = {
+      text,
+      censor: true,
+      return_scores: true // Always request scores for detailed information
+    };
+
     const response = await fetch(`${API_BASE_URL}predict`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        text
-      }),
+      body: JSON.stringify(requestBody),
       signal: controller.signal
     });
     
@@ -71,7 +74,7 @@ export const checkToxicity = async (text: string): Promise<ToxicityResult> => {
       throw new Error(`Toxicity check failed: ${response.status}`);
     }
     
-    const data: ToxicityPrediction = await response.json();
+    const data: FastAPIPredictionOutput = await response.json();
     
     // Transform FastAPI response to our standard format
     return transformFastAPIResponse(data);
@@ -155,40 +158,39 @@ export const censorText = async (
 };
 
 // Transform the FastAPI response to our standardized format
-const transformFastAPIResponse = (data: ToxicityPrediction): ToxicityResult => {
-  // Get the class labels and probabilities
-  const rawProbabilities: Record<string, number> = { ...data.predictions };
+const transformFastAPIResponse = (data: FastAPIPredictionOutput): ToxicityResult => {
+  // Extract the scores (probabilities) from the data
+  // If scores aren't available, create an empty object
+  const rawProbabilities: Record<string, number> = data.scores || {};
   
   // Transform to results format with probability and detection flag
   const results: Record<string, { probability: number; is_detected: boolean }> = {};
   
-  Object.entries(rawProbabilities).forEach(([category, probability]) => {
-    const mappedCategory = mapCategoryName(category);
+  // Create entries for each prediction category
+  Object.entries(data.predictions).forEach(([category, isDetected]) => {
+    const probability = data.scores?.[category] || 0;
     
-    // Use the optimized threshold if available, otherwise use the default 0.5
-    const threshold = OPTIMIZED_THRESHOLDS[mappedCategory] ?? 0.5;
-    
-    results[mappedCategory] = {
+    results[category] = {
       probability,
-      is_detected: probability >= threshold
+      is_detected: isDetected
     };
   });
   
   // Determine detected categories
-  const detectedCategories = Object.entries(results)
-    .filter(([_, value]) => value.is_detected)
+  const detectedCategories = Object.entries(data.predictions)
+    .filter(([_, value]) => value)
     .map(([key]) => key);
   
   // Determine overall toxicity level using the updated logic with specific threshold
-  const isToxic = detectedCategories.length > 0;
+  const isToxic = detectedCategories.length > 0 || data.contains_profanity;
   let toxicityLevel: 'not toxic' | 'toxic' | 'very toxic' = 'not toxic';
   
   if (isToxic) {
     // Check for "very toxic" using the specific very_toxic threshold
     // Look for any category with probability above the VERY_TOXIC_THRESHOLD
-    const hasVeryHighToxicity = Object.values(results).some(value => 
-      value.probability >= VERY_TOXIC_THRESHOLD
-    );
+    const hasVeryHighToxicity = Object.values(rawProbabilities).some(value => 
+      value >= VERY_TOXIC_THRESHOLD
+    ) || data.predictions['very_toxic'] === true;
     
     toxicityLevel = hasVeryHighToxicity ? 'very toxic' : 'toxic';
   }
@@ -206,27 +208,6 @@ const transformFastAPIResponse = (data: ToxicityPrediction): ToxicityResult => {
   };
 };
 
-// Map category names from FastAPI to frontend expected format
-const mapCategoryName = (category: string): string => {
-  // This mapping should match your expected categories in the frontend
-  const categoryMapping: Record<string, string> = {
-    'class_0': 'toxic',
-    'class_1': 'insult',
-    'class_2': 'profanity',
-    'class_3': 'threat',
-    'class_4': 'identity hate',
-    
-    // If the FastAPI is already using the right names, use these:
-    'toxic': 'toxic',
-    'insult': 'insult',
-    'profanity': 'profanity',
-    'threat': 'threat',
-    'identity hate': 'identity hate'
-  };
-  
-  return categoryMapping[category] || category;
-};
-
 // Default toxicity result for error cases
 const getDefaultToxicityResult = (): ToxicityResult => ({
   results: {},
@@ -239,3 +220,67 @@ const getDefaultToxicityResult = (): ToxicityResult => ({
   censored_text: null,
   censored_words: []
 });
+
+// Get the currently configured thresholds from the FastAPI server
+export const getThresholds = async (): Promise<Record<string, number>> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}thresholds`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to get thresholds: ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error getting thresholds:', error);
+    return {};
+  }
+};
+
+// Update the thresholds on the FastAPI server
+export const updateThresholds = async (thresholds: Record<string, number>): Promise<boolean> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}thresholds`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ thresholds })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to update thresholds: ${response.status}`);
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error updating thresholds:', error);
+    return false;
+  }
+};
+
+// Reset thresholds to default values
+export const resetThresholds = async (): Promise<boolean> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}reset_thresholds`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to reset thresholds: ${response.status}`);
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error resetting thresholds:', error);
+    return false;
+  }
+};
