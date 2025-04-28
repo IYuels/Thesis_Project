@@ -1,6 +1,6 @@
 import { AlertTriangle, X, AlertCircle, ThumbsDown } from 'lucide-react';
 import { Button } from '../ui/button';
-import { ToxicityData } from '@/types';
+import { ToxicityResult } from '@/repository/toxicity.service';
 
 // Enhanced modal component for toxicity warning
 const ToxicityWarningModal = ({ 
@@ -10,17 +10,15 @@ const ToxicityWarningModal = ({
 }: { 
   isOpen: boolean; 
   onClose: () => void; 
-  toxicityData: ToxicityData | null | undefined;
+  toxicityData: ToxicityResult | null | undefined;
 }) => {
   if (!isOpen || !toxicityData) return null;
 
   // Map toxicity level to appropriate color and icon
   const getToxicityLevelInfo = () => {
-    if (!toxicityData.toxicity_level) {
-      return { color: 'yellow', icon: <AlertTriangle className="h-5 w-5 text-yellow-500 mr-2" /> };
-    }
+    const toxicityLevel = toxicityData.summary?.toxicity_level || 'not toxic';
 
-    switch (toxicityData.toxicity_level) {
+    switch (toxicityLevel) {
       case 'very toxic':
         return { color: 'red', icon: <ThumbsDown className="h-5 w-5 text-red-500 mr-2" /> };
       case 'toxic':
@@ -36,11 +34,11 @@ const ToxicityWarningModal = ({
   // Helper to get user-friendly category names
   const getCategoryDisplayName = (category: string): string => {
     const displayNames: Record<string, string> = {
-      'obscenity/profanity': 'Profanity',
-      'insults': 'Insults',
-      'threatening': 'Threatening Content',
-      'identity-based negativity': 'Identity Attacks',
       'toxic': 'Toxic Content',
+      'insult': 'Insults',
+      'threat': 'Threatening Content',
+      'identity_hate': 'Identity Attacks',
+      'profanity': 'Profanity',
       'very_toxic': 'Very Toxic Content',
       'not_toxic': 'Non-Toxic'
     };
@@ -66,9 +64,9 @@ const ToxicityWarningModal = ({
               {icon}
               <h3 className="font-semibold text-lg">
                 Content Warning
-                {toxicityData.toxicity_level && (
+                {toxicityData.summary?.toxicity_level && (
                   <span className="ml-2 text-sm font-normal">
-                    ({toxicityData.toxicity_level})
+                    ({toxicityData.summary.toxicity_level})
                   </span>
                 )}
               </h3>
@@ -82,11 +80,11 @@ const ToxicityWarningModal = ({
           </div>
           
           <div className="p-4 max-h-[70vh] overflow-y-auto">
-            {toxicityData.detected_categories && toxicityData.detected_categories.length > 0 && (
+            {toxicityData.summary?.detected_categories && toxicityData.summary.detected_categories.length > 0 && (
               <div className="mb-3">
                 <span className="font-medium">Detected Categories: </span>
                 <span className="text-red-600">
-                  {toxicityData.detected_categories.map(cat => getCategoryDisplayName(cat)).join(', ')}
+                  {toxicityData.summary.detected_categories.map(cat => getCategoryDisplayName(cat)).join(', ')}
                 </span>
               </div>
             )}
@@ -106,14 +104,28 @@ const ToxicityWarningModal = ({
                   if (!aIsNotToxic && bIsNotToxic) return 1;
                   return b[1].probability - a[1].probability;
                 })
-                .map(([category]) => {
-                  return (
-                    <div key={category} className="flex items-center justify-between">
+                .map(([category, values]) => (
+                  <div key={category} className="flex items-center justify-between bg-gray-50 p-2 rounded">
+                    <span className="text-sm font-medium">{getCategoryDisplayName(category)}</span>
+                    <div className="flex items-center">
+                      <span className={`text-sm ${values.is_detected ? 'text-red-500 font-bold' : 'text-gray-500'}`}>
+                        {Math.round(values.probability * 100)}%
+                      </span>
+                      {values.is_detected && (
+                        <AlertTriangle className="h-4 w-4 text-red-500 ml-1" />
+                      )}
                     </div>
-                  );
-                })
+                  </div>
+                ))
               }
             </div>
+            
+            {toxicityData.censored_text && (
+              <div className="mb-4">
+                <span className="font-medium">Censored Version: </span>
+                <p className="mt-1 p-2 bg-gray-50 rounded">{toxicityData.censored_text}</p>
+              </div>
+            )}
             
             <Button 
               onClick={onClose}

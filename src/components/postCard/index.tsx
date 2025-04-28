@@ -1,4 +1,3 @@
-// Update these imports to include ShieldCheck from Lucide
 import { useUserAuth } from '@/context/userAuthContext';
 import { Comment, DocumentResponse, NotificationType, ToxicityData } from '@/types';
 import * as React from 'react';
@@ -12,7 +11,7 @@ import {
     ClockIcon, 
     MoreVertical, 
     ShieldAlert,
-    ShieldCheck // Added ShieldCheck icon
+    ShieldCheck 
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { deletePost, updateLikesOnPost } from '@/repository/post.service';
@@ -42,9 +41,9 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip'; // Added Tooltip components
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
 
-// Define the toxicity level types
+// Define the toxicity level types using the standard types from ToxicityData
 type ToxicityLevel = 'not toxic' | 'toxic' | 'very toxic';
 
 // Map toxicity levels to colors for UI elements
@@ -58,24 +57,11 @@ interface IPostCardProps {
     data: DocumentResponse;
 }
 
-// Updated interface to match the structure expected
-interface EnhancedToxicityData {
-    is_toxic: boolean;
-    toxicity_level: ToxicityLevel;
-    detected_categories: string[];
-    results: Record<string, {
-        probability: number;
-        is_detected: boolean;
-    }>;
-    censored_text: string | null;
-    censored_words?: string[];
-}
-
 const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
     const [showOriginalContent, setShowOriginalContent] = React.useState(false);
     
-    // Toxicity detection state and refs with improved structure
-    const toxicityCache = React.useRef<Map<string, EnhancedToxicityData>>(new Map());
+    // Toxicity detection state and refs - using the standard ToxicityData from types
+    const toxicityCache = React.useRef<Map<string, ToxicityData>>(new Map());
     const [isCheckingToxicity, setIsCheckingToxicity] = React.useState(false);
     const [showToxicityWarningModal, setShowToxicityWarningModal] = React.useState(false);
     const [isContentChecked, setIsContentChecked] = React.useState(false);
@@ -88,8 +74,8 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
         photoURL: data.photoURL || avatar
     });
     
-    // Enhanced toxicity state with improved data structure
-    const [commentToxicity, setCommentToxicity] = React.useState<EnhancedToxicityData | null>(null);
+    // Toxicity state using the standard ToxicityData
+    const [commentToxicity, setCommentToxicity] = React.useState<ToxicityData | null>(null);
     
     // Delete post modal state
     const [showDeleteModal, setShowDeleteModal] = React.useState(false);
@@ -98,16 +84,16 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
     const hasToxicity = React.useMemo(() => {
         return Boolean(data.toxicity && 
                typeof data.toxicity === 'object' && 
-               data.toxicity.is_toxic === true);
+               data.toxicity.summary?.is_toxic === true);
     }, [data.toxicity]);
     
     // Get toxicity level with improved error handling
     const getToxicityLevel = (): ToxicityLevel => {
-        if (!data.toxicity || typeof data.toxicity !== 'object') {
+        if (!data.toxicity || typeof data.toxicity !== 'object' || !data.toxicity.summary) {
             return 'not toxic';
         }
         
-        const level = data.toxicity.toxicity_level as ToxicityLevel;
+        const level = data.toxicity.summary.toxicity_level;
         if (level === 'toxic' || level === 'very toxic') {
             return level;
         }
@@ -117,19 +103,11 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
     
     // Get detected categories from toxicity data
     const getDetectedCategories = (): string[] => {
-        if (!data.toxicity) {
+        if (!data.toxicity || typeof data.toxicity !== 'object' || !data.toxicity.summary) {
             return [];
         }
         
-        if (typeof data.toxicity !== 'object') {
-            return [];
-        }
-        
-        if (!Array.isArray(data.toxicity.detected_categories)) {
-            return [];
-        }
-        
-        return data.toxicity.detected_categories;
+        return data.toxicity.summary.detected_categories || [];
     };
     
     // Get appropriate toxicity icon based on level
@@ -223,9 +201,6 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
 
     const toggleContentView = () => {
         const newValue = !showOriginalContent;
-        console.log(`Toggling content view to: ${newValue ? 'original' : 'censored'}`);
-        console.log("Original content:", data.originalCaption);
-        console.log("Censored content:", data.caption);
         setShowOriginalContent(newValue);
     };
 
@@ -274,8 +249,8 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
         date: new Date()
     });
 
-    // Enhanced toxicity check function with improved error handling and caching
-    const performToxicityCheck = async (text: string): Promise<EnhancedToxicityData | null> => {
+    // Toxicity check function using the updated toxicity service
+    const performToxicityCheck = async (text: string): Promise<ToxicityData | null> => {
         // Skip empty text check
         if (!text.trim()) {
             return null;
@@ -289,33 +264,15 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
         try {
             setIsCheckingToxicity(true);
             
-            // Use the toxicity service with proper handling
+            // Use the toxicity service directly
             const result = await checkToxicity(text);
             
-            // Transform result to standardized EnhancedToxicityData format
-            const toxicityData: EnhancedToxicityData = {
-                is_toxic: result.summary?.is_toxic || false,
-                toxicity_level: (result.summary?.toxicity_level as ToxicityLevel) || 'not toxic',
-                detected_categories: result.summary?.detected_categories || [],
-                results: result.results || {},
-                censored_text: result.censored_text || null,
-                censored_words: result.censored_words || []
-            };
-            
             // Store in cache for future use
-            toxicityCache.current.set(text, toxicityData);
-            return toxicityData;
+            toxicityCache.current.set(text, result);
+            return result;
         } catch (error) {
             console.warn("Toxicity check failed:", error);
-            // Return safe default in case of errors
-            return {
-                is_toxic: false, 
-                toxicity_level: 'not toxic',
-                detected_categories: [],
-                results: {},
-                censored_text: text,
-                censored_words: []
-            };
+            return null;
         } finally {
             setIsCheckingToxicity(false);
         }
@@ -346,8 +303,8 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
             setCommentToxicity(result);
             
             // If toxic content is detected, show a toast notification
-            if (result && result.is_toxic) {
-                toast.success(`Your comment contains ${result.toxicity_level} content. It will be censored if posted.`)
+            if (result && result.summary && result.summary.is_toxic) {
+                toast.success(`Your comment contains ${result.summary.toxicity_level} content. It will be censored if posted.`)
             }
             
             // Mark content as checked
@@ -386,7 +343,7 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
             let postText = comment.caption;
             let isToxic = false;
             
-            if (toxicityData && toxicityData.is_toxic === true) {
+            if (toxicityData && toxicityData.summary && toxicityData.summary.is_toxic === true) {
                 isToxic = true;
                 
                 // Use cached censored text if available
@@ -408,14 +365,7 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
                 userID: user?.uid,
                 username: user.displayName!,
                 photoURL: user.photoURL!,
-                toxicity: toxicityData ? {
-                    is_toxic: toxicityData.is_toxic,
-                    toxicity_level: toxicityData.toxicity_level,
-                    detected_categories: toxicityData.detected_categories,
-                    results: toxicityData.results,
-                    censored_text: toxicityData.censored_text,
-                    censored_words: toxicityData.censored_words
-                } : null
+                toxicity: toxicityData || null
             };
             
             await createComment(newPost);
@@ -543,8 +493,8 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
             );
         }
         
-        if (isContentChecked && commentToxicity && commentToxicity.is_toxic) {
-            const level = commentToxicity.toxicity_level || 'toxic';
+        if (isContentChecked && commentToxicity && commentToxicity.summary && commentToxicity.summary.is_toxic) {
+            const level = commentToxicity.summary.toxicity_level || 'toxic';
             const colorClass = TOXICITY_COLORS[level as ToxicityLevel] || 'text-yellow-500';
             
             return (
@@ -558,9 +508,7 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
         if (isContentChecked) {
             return (
                 <div className="text-xs text-green-500 mt-1 flex items-center">
-                    <svg className="h-3 w-3 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
+                    <ShieldCheck className="h-3 w-3 mr-1" />
                     Content checked - ready to post.
                 </div>
             );
@@ -742,90 +690,90 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
                                                         <div className="flex justify-end">
                                                             <Button 
                                                                 className={`text-xs sm:text-sm py-1 px-3 h-8 cursor-pointer ${
-                                                    !isContentChecked 
-                                                    ? 'bg-blue-500 hover:bg-blue-600' 
-                                                    : 'bg-green-500 hover:bg-green-600'
-                                                }`}
-                                                type="submit"
-                                                disabled={isCheckingToxicity || comment.caption?.trim() === ''}
-                                                onClick={() => isContentChecked ? undefined : handleCheckToxicity()}
-                                            >
-                                                {getButtonText()}
-                                            </Button>
+                                                                    !isContentChecked 
+                                                                    ? 'bg-blue-500 hover:bg-blue-600' 
+                                                                    : 'bg-green-500 hover:bg-green-600'
+                                                                }`}
+                                                                type="submit"
+                                                                disabled={isCheckingToxicity || comment.caption?.trim() === ''}
+                                                                onClick={() => isContentChecked ? undefined : handleCheckToxicity()}
+                                                            >
+                                                                {getButtonText()}
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                </form>
+                                            </div>
                                         </div>
                                     </div>
-                                </form>
+                                </div>
                             </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        )}
+                        )}
 
-        {postComments.length > 0 && (
-            <div className="bg-gray-50 p-2 sm:p-3 rounded mb-2">
-                <CommentCard data={postComments[0]} key={postComments[0].id}/>
-                
-                {postComments.length > 1 && showAllComments && (
-                    <div className="mt-2 space-y-2 pt-2 border-t border-gray-200">
-                        {postComments.slice(1).map((item) => (
-                            <CommentCard 
-                            data={item} 
-                            key={item.id}
-                            currentUserProfile={data && data.id === item.userID ? {
-                                displayName: data.username || "Guest_User",
-                                photoURL: data.photoURL || avatar
-                            } : undefined}
-                        />
-                        ))}
-                    </div>
-                )}
-                
-                {postComments.length > 1 && (
-                    <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="text-xs sm:text-sm text-sky-700 hover:text-sky-800 w-full mt-2"
-                        onClick={() => setShowAllComments(!showAllComments)}
-                    >
-                        {showAllComments 
-                            ? "Show less" 
-                            : `See ${postComments.length - 1} more comment${postComments.length > 2 ? 's' : ''}`
-                        }
-                    </Button>
-                )}
-            </div>
-        )}
-    </CardFooter>
-</Card>
+                        {postComments.length > 0 && (
+                            <div className="bg-gray-50 p-2 sm:p-3 rounded mb-2">
+                                <CommentCard data={postComments[0]} key={postComments[0].id}/>
+                                
+                                {postComments.length > 1 && showAllComments && (
+                                    <div className="mt-2 space-y-2 pt-2 border-t border-gray-200">
+                                        {postComments.slice(1).map((item) => (
+                                            <CommentCard 
+                                            data={item} 
+                                            key={item.id}
+                                            currentUserProfile={data && data.id === item.userID ? {
+                                                displayName: data.username || "Guest_User",
+                                                photoURL: data.photoURL || avatar
+                                            } : undefined}
+                                        />
+                                        ))}
+                                    </div>
+                                )}
+                                
+                                {postComments.length > 1 && (
+                                    <Button 
+                                        variant="ghost" 
+                                        size="sm" 
+                                        className="text-xs sm:text-sm text-sky-700 hover:text-sky-800 w-full mt-2"
+                                        onClick={() => setShowAllComments(!showAllComments)}
+                                    >
+                                        {showAllComments 
+                                            ? "Show less" 
+                                            : `See ${postComments.length - 1} more comment${postComments.length > 2 ? 's' : ''}`
+                                        }
+                                    </Button>
+                                )}
+                            </div>
+                        )}
+                    </CardFooter>
+                </Card>
 
-{/* Toxicity Warning Modal */}
-<ToxicityWarningModal
-    isOpen={showToxicityWarningModal}
-    onClose={() => setShowToxicityWarningModal(false)}
-    toxicityData={data.toxicity as ToxicityData}
-/>
+                {/* Toxicity Warning Modal */}
+                <ToxicityWarningModal
+                    isOpen={showToxicityWarningModal}
+                    onClose={() => setShowToxicityWarningModal(false)}
+                    toxicityData={data.toxicity as ToxicityData}
+                />
 
-{/* Delete Post Confirmation Modal */}
-<AlertDialog open={showDeleteModal} onOpenChange={setShowDeleteModal}>
-    <AlertDialogContent className='bg-white'>
-        <AlertDialogHeader>
-            <AlertDialogTitle>Delete Post</AlertDialogTitle>
-            <AlertDialogDescription>
-                Are you sure you want to delete this post? This action cannot be undone.
-            </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction 
-                className="bg-red-500 hover:bg-red-600"
-                onClick={handleDeletePost}
-            >
-                Delete
-            </AlertDialogAction>
-        </AlertDialogFooter>
-    </AlertDialogContent>
-</AlertDialog>
+                {/* Delete Post Confirmation Modal */}
+                <AlertDialog open={showDeleteModal} onOpenChange={setShowDeleteModal}>
+                    <AlertDialogContent className='bg-white'>
+                        <AlertDialogHeader>
+                            <AlertDialogTitle>Delete Post</AlertDialogTitle>
+                            <AlertDialogDescription>
+                                Are you sure you want to delete this post? This action cannot be undone.
+                            </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction 
+                                className="bg-red-500 hover:bg-red-600"
+                                onClick={handleDeletePost}
+                            >
+                                Delete
+                            </AlertDialogAction>
+                        </AlertDialogFooter>
+                    </AlertDialogContent>
+                </AlertDialog>
             </div>
         </div>
     );

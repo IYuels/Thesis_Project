@@ -16,18 +16,20 @@ export interface FileEntry {
     files: OutputFileEntry[];
 }
 
-// Enhanced toxicity interface based on FastAPI model
+// Enhanced toxicity interface based on updated FastAPI model
 export interface ToxicityData {
-    is_toxic: boolean;
-    toxicity_level: 'not toxic' | 'toxic' | 'very toxic'; 
-    detected_categories: string[];
     results: Record<string, {
         probability: number;
         is_detected: boolean;
     }>;
-    raw_probabilities?: Record<string, number>;
-    censored_text?: string | null;
-    censored_words?: string[]; // Added from FastAPI response
+    summary: {
+        is_toxic: boolean;
+        toxicity_level: 'not toxic' | 'toxic' | 'very toxic';
+        detected_categories: string[];
+    };
+    raw_probabilities?: Record<string, number> | null;
+    censored_text: string | null;
+    censored_words?: string[];
 }
 
 export interface Post {
@@ -133,23 +135,16 @@ export interface ToxicityPredictionRequest {
 export interface ToxicityPredictionResponse {
     original_text: string;
     censored_text: string;
-    predictions: Record<string, number>;
-    censored_words: string[];
-}
-
-// Censor levels for your application
-export enum CensorLevel {
-    AUTO = 'auto',
-    LIGHT = 'light',
-    MEDIUM = 'medium',
-    HEAVY = 'heavy'
+    probabilities: Record<string, number>;
+    predicted_labels: string[];
 }
 
 // Categories that match the FastAPI model's output categories
 export enum ToxicityCategory {
-    OBSCENITY = 'obscenity/profanity',
-    INSULTS = 'insults',
-    THREATENING = 'threatening',
-    IDENTITY_BASED = 'identity-based negativity'
-    // Add or modify categories based on your model's output
+    TOXIC = 'toxic',
+    INSULT = 'insult',
+    PROFANITY = 'profanity',
+    THREAT = 'threat',
+    IDENTITY_HATE = 'identity hate',
+    VERY_TOXIC = 'very_toxic'
 }

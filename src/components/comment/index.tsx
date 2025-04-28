@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useUserAuth } from '@/context/userAuthContext';
-import { Comment } from '@/types';
+import { Comment, ToxicityData } from '@/types';
 import { deleteComment, updateLikesOnComment } from '@/repository/comment.service';
 import { cn } from '@/lib/utils';
 import { CardContent, CardHeader, CardTitle } from '../ui/card';
@@ -35,6 +35,8 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+// Import toxicity service functions
+import { checkToxicity, censorText } from '@/repository/toxicity.service';
 
 interface ICommentCardProps {
     data: Comment;
@@ -50,6 +52,7 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data, onDelet
     const { user, userProfile } = useUserAuth();
     const [showOriginalContent, setShowOriginalContent] = React.useState(false);
     const [showDeleteModal, setShowDeleteModal] = React.useState(false);
+    const [isChecking, setIsChecking] = React.useState(false);
     
     // Store the full profile response from subscription
     const [commentDisplayData, setCommentDisplayData] = React.useState({
@@ -88,9 +91,19 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data, onDelet
 
     // Enhanced toxicity detection using ToxicityData from types.ts
     const hasToxicity = React.useMemo(() => {
-        return Boolean(data.toxicity && 
-               typeof data.toxicity === 'object' && 
-               data.toxicity.is_toxic === true);
+        if (!data.toxicity) return false;
+        
+        // Handle both old and new toxicity data format
+        if (typeof data.toxicity === 'object') {
+            // Check if it has the new summary format
+            if ('summary' in data.toxicity && data.toxicity.summary) {
+                return data.toxicity.summary.is_toxic === true;
+            }
+            // Fallback for old format
+            return 'is_toxic' in data.toxicity && data.toxicity.is_toxic === true;
+        }
+        
+        return false;
     }, [data.toxicity]);
     
     // Get toxicity level using the standardized format from types.ts
@@ -99,29 +112,41 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data, onDelet
             return 'not toxic';
         }
         
-        const level = data.toxicity.toxicity_level;
-        if (level === 'toxic' || level === 'very toxic') {
-            return level;
+        // Handle both old and new toxicity data format
+        if ('summary' in data.toxicity && data.toxicity.summary) {
+            return data.toxicity.summary.toxicity_level || 'not toxic';
+        }
+        
+        // Fallback for old format
+        if ('toxicity_level' in data.toxicity) {
+            const level = data.toxicity.toxicity_level;
+            if (level === 'toxic' || level === 'very toxic') {
+                return level;
+            }
         }
         
         return 'not toxic';
     };
     
-    // Get detected categories from toxicity data
+    // Get detected categories from toxicity data with safe type handling
     const getDetectedCategories = (): string[] => {
-        if (!data.toxicity) {
+        if (!data.toxicity || typeof data.toxicity !== 'object') {
             return [];
         }
         
-        if (typeof data.toxicity !== 'object') {
-            return [];
+        // Handle both old and new toxicity data format
+        if ('summary' in data.toxicity && data.toxicity.summary) {
+            const categories = data.toxicity.summary.detected_categories;
+            return Array.isArray(categories) ? categories : [];
         }
         
-        if (!Array.isArray(data.toxicity.detected_categories)) {
-            return [];
+        // Fallback for old format
+        if ('detected_categories' in data.toxicity) {
+            const categories = data.toxicity.detected_categories;
+            return Array.isArray(categories) ? categories : [];
         }
         
-        return data.toxicity.detected_categories;
+        return [];
     };
     
     // Get appropriate toxicity icon based on level
@@ -135,6 +160,35 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data, onDelet
                 return <AlertTriangle className="h-5 w-5 text-yellow-500" />;
             default:
                 return <ShieldCheck className="h-5 w-5 text-green-500" />;
+        }
+    };
+    
+    // Function to check toxicity manually if needed
+    const recheckToxicity = async () => {
+        if (!data.caption || isChecking) return;
+        
+        setIsChecking(true);
+        try {
+            const result = await checkToxicity(data.caption);
+            console.log("Toxicity check result:", result);
+            
+            // Update the data with the new toxicity information
+            data.toxicity = result as ToxicityData;
+            
+            // If toxic, also get the censored version
+            if (result.summary.is_toxic) {
+                const censorResult = await censorText(data.caption);
+                if (censorResult.censored_text && censorResult.censored_text !== data.caption) {
+                    data.originalCaption = data.caption;
+                    data.caption = censorResult.censored_text;
+                }
+            }
+            
+            // Force component to re-render
+            setIsChecking(false);
+        } catch (error) {
+            console.error("Error checking toxicity:", error);
+            setIsChecking(false);
         }
     };
     
@@ -197,21 +251,49 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data, onDelet
         isLike: boolean
     }>({
         likes: data.likes || 0,
-        isLike: data.userlikes?.includes(user!.uid) ? true : false
+        isLike: user && data.userlikes?.includes(user.uid) ? true : false
     });
     
     const updateLike = async (isVal: boolean) => {
+        if (!user) {
+            toast.error("You need to be logged in to like comments");
+            return;
+        }
+        
         setLikesInfo({
             likes: isVal ? likesInfo.likes + 1 : likesInfo.likes - 1,
             isLike: !likesInfo.isLike,
         });
-        if(isVal) {
-            data.userlikes?.push(user!.uid);
-        } else {
-            data.userlikes?.splice(data.userlikes.indexOf(user!.uid), 1);
+        
+        // Initialize userlikes array if it doesn't exist
+        if (!data.userlikes) {
+            data.userlikes = [];
         }
         
-        await updateLikesOnComment(data.id!, data.userlikes!, isVal ? likesInfo.likes + 1 : likesInfo.likes - 1);
+        if (isVal) {
+            data.userlikes.push(user.uid);
+        } else {
+            const index = data.userlikes.indexOf(user.uid);
+            if (index > -1) {
+                data.userlikes.splice(index, 1);
+            }
+        }
+        
+        try {
+            await updateLikesOnComment(
+                data.id!, 
+                data.userlikes, 
+                isVal ? likesInfo.likes + 1 : likesInfo.likes - 1
+            );
+        } catch (error) {
+            console.error("Failed to update like:", error);
+            // Revert the like state on error
+            setLikesInfo({
+                likes: isVal ? likesInfo.likes - 1 : likesInfo.likes + 1,
+                isLike: isVal ? false : true,
+            });
+            toast.error("Failed to update like");
+        }
     };
 
     // Function to toggle between original and censored content with improved debug logging
@@ -302,10 +384,13 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data, onDelet
                 
                 // Show success toast
                 toast.success("Comment deleted successfully");
-                window.location.reload(); // Refresh the page after deletion
+                setShowDeleteModal(false);
+                // Using location.reload() can be disruptive
+                // Instead, consider implementing a more targeted state update
             } catch (error) {
                 console.error("Failed to delete comment:", error);
                 toast.error("Failed to delete comment");
+                setShowDeleteModal(false);
             }
         }
     };
@@ -337,8 +422,12 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data, onDelet
                             <TooltipTrigger asChild>
                                 <button 
                                     onClick={() => hasToxicity ? setShowToxicityWarningModal(true) : undefined}
-                                    className="focus:outline-none"
+                                    className={cn(
+                                        "focus:outline-none transition-all",
+                                        isChecking ? "animate-pulse" : ""
+                                    )}
                                     title="Content moderation status"
+                                    disabled={isChecking}
                                 >
                                     {getToxicityIcon()}
                                 </button>
@@ -349,27 +438,37 @@ const CommentCard: React.FunctionComponent<ICommentCardProps> = ({ data, onDelet
                         </Tooltip>
                     </TooltipProvider>
 
-                    {/* Replace X icon with 3-dot menu button */}
-                    {user?.uid === data.userID && (
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <button
-                                    className="focus:outline-none text-gray-500 hover:text-gray-700" 
-                                    title="Comment options"
-                                >
-                                    <MoreVertical className="h-4 w-4" />
-                                </button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-36">
+                    {/* Options dropdown menu */}
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <button
+                                className="focus:outline-none text-gray-500 hover:text-gray-700" 
+                                title="Comment options"
+                            >
+                                <MoreVertical className="h-4 w-4" />
+                            </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48">
+                            {/* Show Delete option only for user's own comments */}
+                            {user?.uid === data.userID && (
                                 <DropdownMenuItem 
                                     className="text-red-500 focus:text-red-500 cursor-pointer"
                                     onClick={() => setShowDeleteModal(true)}
                                 >
                                     Delete comment
                                 </DropdownMenuItem>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
-                    )}
+                            )}
+                            
+                            {/* Option to recheck toxicity manually */}
+                            <DropdownMenuItem 
+                                className="cursor-pointer"
+                                onClick={recheckToxicity}
+                                disabled={isChecking}
+                            >
+                                {isChecking ? 'Checking toxicity...' : 'Check content toxicity'}
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
                 </div>
             </CardHeader>
 
