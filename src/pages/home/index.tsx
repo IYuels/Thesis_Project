@@ -9,7 +9,6 @@ import { DocumentResponse, Post } from '@/types';
 import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Check, AlertTriangle, ShieldAlert } from 'lucide-react';
 
 interface IHomeProps {}
 
@@ -18,14 +17,12 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
     const navigate = useNavigate();
     const [data, setData] = React.useState<DocumentResponse[]>([]);
     const [displayedData, setDisplayedData] = React.useState<DocumentResponse[]>([]);
-    const [isCheckingToxicity, setIsCheckingToxicity] = React.useState(false);
     const [isSubmitting, setIsSubmitting] = React.useState(false);
     const [isLoading, setIsLoading] = React.useState(false);
     const [hasMore, setHasMore] = React.useState(true);
     const [page, setPage] = React.useState(1);
     const [sortFilter, setSortFilter] = React.useState("latest");
     const [allPosts, setAllPosts] = React.useState<DocumentResponse[]>([]);
-    const [isContentChecked, setIsContentChecked] = React.useState(false);
     const postsPerPage = 5;
     
     const observer = React.useRef<IntersectionObserver | null>(null);
@@ -41,9 +38,6 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
         
         if (node) observer.current.observe(node);
     }, [isLoading, hasMore]);
-
-    // Enhanced toxicity warning state using ToxicityResult from the service
-    const [toxicityWarning, setToxicityWarning] = React.useState<ToxicityResult | null>(null);
 
     const toxicityTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
     const toxicityCache = React.useRef<Map<string, ToxicityResult>>(new Map());
@@ -203,97 +197,14 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
         }
     };
 
-    // Modified caption change handler - reset toxicity check status
+    // Modified caption change handler - simpler now without toxicity check
     const handleCaptionChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         const newText = e.target.value;
         setPost({...post, caption: newText});
         
-        // Reset content checked status when text changes
-        if (isContentChecked) {
-            setIsContentChecked(false);
-            setToxicityWarning(null);
-        }
-        
         // Clear any scheduled check
         if (toxicityTimeoutRef.current) {
             clearTimeout(toxicityTimeoutRef.current);
-        }
-    };
-
-    // Enhanced function to handle the check button click
-    const handleCheckContent = async () => {
-        if (!post.caption.trim()) {
-            return;
-        }
-        
-        setIsCheckingToxicity(true);
-        
-        try {
-            const result = await performToxicityCheck(post.caption);
-            
-            if (result) {
-                setToxicityWarning(result.summary.is_toxic ? result : null);
-            } else {
-                setToxicityWarning(null);
-            }
-            
-            // Mark content as checked
-            setIsContentChecked(true);
-        } catch (err) {
-            console.error("Error checking toxicity:", err);
-            setToxicityWarning(null);
-        } finally {
-            setIsCheckingToxicity(false);
-        }
-    };
-
-    // Updated submit handler with streamlined toxicity checking
-    const handleSubmit = async(e: React.FormEvent<HTMLFormElement>) => {
-        e.preventDefault();
-        
-        if (!post.caption.trim()) {
-            return;
-        }
-        
-        // If content hasn't been checked yet, check it first
-        if (!isContentChecked) {
-            await handleCheckContent();
-            return;
-        }
-        
-        setIsSubmitting(true);
-        
-        try {
-            let toxicityResult: ToxicityResult;
-            
-            if (toxicityCache.current.has(post.caption)) {
-                toxicityResult = toxicityCache.current.get(post.caption)!;
-            } else {
-                toxicityResult = await performToxicityCheck(post.caption);
-            }
-            
-            // Create post with toxicity data
-            await createPostWithToxicityData(toxicityResult);
-            
-        } catch (error) {
-            console.error("Error during post submission:", error);
-        } finally {
-            setIsSubmitting(false);
-            // Reset checked state and form after posting
-            setIsContentChecked(false);
-            setToxicityWarning(null);
-            setPost({
-                id:"",
-                caption: '',
-                originalCaption: null,
-                likes: 0,
-                userlikes: [],
-                username: "",
-                photoURL:"",
-                userID: null,
-                date: new Date(),
-                toxicity: null
-            });
         }
     };
 
@@ -312,6 +223,49 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
         } catch (error) {
             console.error("Error censoring text:", error);
             return text;
+        }
+    };
+
+    // Updated submit handler that directly checks toxicity on post
+    const handleSubmit = async(e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+        
+        if (!post.caption.trim()) {
+            return;
+        }
+        
+        setIsSubmitting(true);
+        
+        try {
+            // Check for toxicity when post is submitted
+            let toxicityResult: ToxicityResult;
+            
+            if (toxicityCache.current.has(post.caption)) {
+                toxicityResult = toxicityCache.current.get(post.caption)!;
+            } else {
+                toxicityResult = await performToxicityCheck(post.caption);
+            }
+            
+            // Create post with toxicity data
+            await createPostWithToxicityData(toxicityResult);
+            
+        } catch (error) {
+            console.error("Error during post submission:", error);
+        } finally {
+            setIsSubmitting(false);
+            // Reset form after posting
+            setPost({
+                id:"",
+                caption: '',
+                originalCaption: null,
+                likes: 0,
+                userlikes: [],
+                username: "",
+                photoURL:"",
+                userID: null,
+                date: new Date(),
+                toxicity: null
+            });
         }
     };
     
@@ -369,9 +323,6 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
                 toxicity: null
             });
             
-            setToxicityWarning(null);
-            setIsContentChecked(false);
-            
             // Refresh posts
             await getAllPost();
         } catch (error) {
@@ -417,66 +368,12 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
         });
     };
     
-    // Enhanced toxicity status indicator with warning levels
-    const ToxicityStatusIndicator = () => {
-        if (!post.caption || post.caption.trim().length < 3) {
-            return null;
-        }
-        
-        if (isCheckingToxicity) {
-            return (
-                <div className="flex items-center text-xs text-gray-500 mt-1">
-                    <svg className="animate-spin h-3 w-3 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Checking content...
-                </div>
-            );
-        }
-        
-        if (isContentChecked) {
-            if (toxicityWarning && toxicityWarning.summary.is_toxic) {
-                // Display warning based on toxicity level
-                if (toxicityWarning.summary.toxicity_level === 'very toxic') {
-                    return (
-                        <div className="flex items-center text-xs text-red-600 mt-1">
-                            <ShieldAlert className="h-3 w-3 mr-1" />
-                            <span>
-                                <strong>High toxicity detected</strong> - Will be censored when posted
-                            </span>
-                        </div>
-                    );
-                } else {
-                    return (
-                        <div className="flex items-center text-xs text-amber-600 mt-1">
-                            <AlertTriangle className="h-3 w-3 mr-1" />
-                            <span>
-                                <strong>Content flagged</strong> - Will be censored when posted
-                            </span>
-                        </div>
-                    );
-                }
-            }
-            
-            // Show success indicator if content has been checked and is safe
-            return (
-                <div className="flex items-center text-xs text-green-600 mt-1">
-                    <Check className="h-3 w-3 mr-1" />
-                    <span>Content checked - no issues detected</span>
-                </div>
-            );
-        }
-        
-        return null;
-    };
-    
     return (
         <Layout>
             <div className='flex justify-center mb-6 md:mb-10 px-4 sm:px-6'>
                 <div className='rounded-2xl sm:rounded-3xl border border-gray-100 shadow-md sm:shadow-lg w-full max-w-3xl bg-white'>
                     <div className='p-4 sm:p-6 md:p-8'>
-                    <form onSubmit={handleSubmit}>
+                        <form onSubmit={handleSubmit}>
                             <div className="flex flex-col">
                                 <div className='flex flex-row min-h-[60px] w-full rounded-md bg-transparent px-2 sm:px-3 py-2 text-sm md:text-base'>
                                     <Textarea 
@@ -488,15 +385,14 @@ const Home: React.FunctionComponent<IHomeProps> = () => {
                                         onChange={handleCaptionChange}
                                     />
                                 </div>
-                                <ToxicityStatusIndicator />
                             </div>
                             
                             <Button 
                                 className='mt-4 sm:mt-8 w-full sm:w-32 cursor-pointer hover:bg-sky-500' 
                                 type='submit'
-                                disabled={isSubmitting || isCheckingToxicity || post.caption.trim().length === 0}
+                                disabled={isSubmitting || post.caption.trim().length === 0}
                             >
-                                {isCheckingToxicity ? 'Checking...' : isContentChecked ? 'Post' : 'Check'}
+                                {isSubmitting ? 'Posting...' : 'Post'}
                             </Button>
                         </form>
                     </div>

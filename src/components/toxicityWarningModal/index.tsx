@@ -22,7 +22,7 @@ const ToxicityWarningModal = ({
       case 'very toxic':
         return { color: 'red', icon: <ThumbsDown className="h-5 w-5 text-red-500 mr-2" /> };
       case 'toxic':
-        return { color: 'yellow', icon: <AlertTriangle className="h-5 w-5 text-yellow-500 mr-2" /> };
+        return { color: 'yellow', icon: <ThumbsDown className="h-5 w-5 text-red-500 mr-2" /> };
       default:
         return { color: 'blue', icon: <AlertCircle className="h-5 w-5 text-blue-500 mr-2" /> };
     }
@@ -64,11 +64,6 @@ const ToxicityWarningModal = ({
               {icon}
               <h3 className="font-semibold text-lg">
                 Content Warning
-                {toxicityData.summary?.toxicity_level && (
-                  <span className="ml-2 text-sm font-normal">
-                    ({toxicityData.summary.toxicity_level})
-                  </span>
-                )}
               </h3>
             </div>
             <button 
@@ -119,14 +114,7 @@ const ToxicityWarningModal = ({
                 ))
               }
             </div>
-            
-            {toxicityData.censored_text && (
-              <div className="mb-4">
-                <span className="font-medium">Censored Version: </span>
-                <p className="mt-1 p-2 bg-gray-50 rounded">{toxicityData.censored_text}</p>
-              </div>
-            )}
-            
+
             <Button 
               onClick={onClose}
               className="w-full"
