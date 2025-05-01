@@ -306,7 +306,7 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
                 }
                 
                 // Notify user about toxic content
-                toast.info(`Your comment contained ${toxicityData.summary.toxicity_level} content and has been censored.`);
+                //toast.info(`Your comment contained ${toxicityData.summary.toxicity_level} content and has been censored.`);
             }
             
             // Create comment with toxicity data
