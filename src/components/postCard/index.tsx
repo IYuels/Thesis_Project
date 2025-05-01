@@ -46,13 +46,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/
 // Define the toxicity level types using the standard types from ToxicityData
 type ToxicityLevel = 'not toxic' | 'toxic' | 'very toxic';
 
-// Map toxicity levels to colors for UI elements
-const TOXICITY_COLORS: Record<ToxicityLevel, string> = {
-    'not toxic': 'text-green-500',
-    'toxic': 'text-orange-500',
-    'very toxic': 'text-red-500'
-};
-
 interface IPostCardProps {
     data: DocumentResponse;
 }
@@ -64,7 +57,6 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
     const toxicityCache = React.useRef<Map<string, ToxicityData>>(new Map());
     const [isCheckingToxicity, setIsCheckingToxicity] = React.useState(false);
     const [showToxicityWarningModal, setShowToxicityWarningModal] = React.useState(false);
-    const [isContentChecked, setIsContentChecked] = React.useState(false);
     
     // Comment state
     const [isVisible, setIsVisible] = React.useState(false);
@@ -73,9 +65,6 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
         username: data.username || "Guest_User",
         photoURL: data.photoURL || avatar
     });
-    
-    // Toxicity state using the standard ToxicityData
-    const [commentToxicity, setCommentToxicity] = React.useState<ToxicityData | null>(null);
     
     // Delete post modal state
     const [showDeleteModal, setShowDeleteModal] = React.useState(false);
@@ -278,48 +267,13 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
         }
     };
     
-    // Modified handleCommentChange - only reset toxicity state when content changes
+    // Simple comment change handler
     const handleCommentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         const newComment = e.target.value;
         setComment({...comment, caption: newComment});
-        
-        // Reset the content checked state when the comment changes
-        if (isContentChecked) {
-            setIsContentChecked(false);
-            setCommentToxicity(null);
-        }
     };
     
-    // Function to check toxicity when the button is clicked
-    const handleCheckToxicity = async () => {
-        if (!comment.caption.trim() || isCheckingToxicity) {
-            return;
-        }
-        
-        setIsCheckingToxicity(true);
-        
-        try {
-            const result = await performToxicityCheck(comment.caption);
-            setCommentToxicity(result);
-            
-            // If toxic content is detected, show a toast notification
-            if (result && result.summary && result.summary.is_toxic) {
-                toast.success(`Your comment contains ${result.summary.toxicity_level} content. It will be censored if posted.`)
-            }
-            
-            // Mark content as checked
-            setIsContentChecked(true);
-        } catch (error) {
-            console.error("Error checking toxicity:", error);
-            setCommentToxicity(null);
-            setIsContentChecked(true);
-            toast.error("Failed to analyze content for toxicity");
-        } finally {
-            setIsCheckingToxicity(false);
-        }
-    };
-    
-    // Modified handleSubmit for two-step process
+    // Modified handleSubmit - now directly checks toxicity when posting
     const handleSubmit = async(e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         
@@ -327,16 +281,12 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
             return;
         }
         
-        // If content hasn't been checked yet, check it first
-        if (!isContentChecked) {
-            await handleCheckToxicity();
-            return;
-        }
+        // Show loading state
+        setIsCheckingToxicity(true);
         
-        // Content has been checked, proceed with posting
         try {
-            // Get the toxicity result we already have
-            let toxicityData = commentToxicity;
+            // First check toxicity 
+            const toxicityData = await performToxicityCheck(comment.caption);
             
             // Create and post the comment
             const originalText = comment.caption;
@@ -354,6 +304,9 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
                     const censorResult = await censorText(comment.caption);
                     postText = censorResult.censored_text || comment.caption;
                 }
+                
+                // Notify user about toxic content
+                toast.info(`Your comment contained ${toxicityData.summary.toxicity_level} content and has been censored.`);
             }
             
             // Create comment with toxicity data
@@ -372,17 +325,19 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
             await handleComment(newPost.caption);
             getAllComment();
             
-            // Reset states
+            // Reset state
             setComment({...comment, caption: ''});
-            setCommentToxicity(null);
-            setIsContentChecked(false);
             
             // Show success toast
-            toast.success("Comment posted successfully");
+            if (!isToxic) {
+                toast.success("Comment posted successfully");
+            }
             
         } catch (error) {
             console.error("Failed to post comment:", error);
             toast.error("Failed to post comment");
+        } finally {
+            setIsCheckingToxicity(false);
         }
     };
           
@@ -479,8 +434,8 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
         }
     };
     
-    // Component to show toxicity status after checking
-    const CommentToxicityIndicator = () => {
+    // Component to show processing state when posting
+    const CommentSubmitIndicator = () => {
         if (isCheckingToxicity) {
             return (
                 <div className="text-xs text-gray-500 mt-1 flex items-center">
@@ -488,28 +443,7 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    Checking content...
-                </div>
-            );
-        }
-        
-        if (isContentChecked && commentToxicity && commentToxicity.summary && commentToxicity.summary.is_toxic) {
-            const level = commentToxicity.summary.toxicity_level || 'toxic';
-            const colorClass = TOXICITY_COLORS[level as ToxicityLevel] || 'text-yellow-500';
-            
-            return (
-                <div className={`text-xs ${colorClass} mt-1 flex items-center`}>
-                    <AlertTriangle className="h-3 w-3 mr-1" />
-                    This comment contains {level} content and will be censored.
-                </div>
-            );
-        }
-        
-        if (isContentChecked) {
-            return (
-                <div className="text-xs text-green-500 mt-1 flex items-center">
-                    <ShieldCheck className="h-3 w-3 mr-1" />
-                    Content checked - ready to post.
+                    Processing comment...
                 </div>
             );
         }
@@ -551,17 +485,6 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
                 </DropdownMenuContent>
             </DropdownMenu>
         );
-    };
-    
-    // Determine button text based on state
-    const getButtonText = () => {
-        if (isCheckingToxicity) {
-            return 'Checking...';
-        }
-        if (!isContentChecked) {
-            return 'Check';
-        }
-        return 'Post';
     };
     
     return(
@@ -685,20 +608,15 @@ const PostCard: React.FunctionComponent<IPostCardProps> = ({data}) => {
                                                             value={comment.caption}
                                                             onChange={handleCommentChange}
                                                         />
-                                                        <CommentToxicityIndicator />
+                                                        <CommentSubmitIndicator />
                                                         
                                                         <div className="flex justify-end">
                                                             <Button 
-                                                                className={`text-xs sm:text-sm py-1 px-3 h-8 cursor-pointer ${
-                                                                    !isContentChecked 
-                                                                    ? 'bg-blue-500 hover:bg-blue-600' 
-                                                                    : 'bg-green-500 hover:bg-green-600'
-                                                                }`}
+                                                                className="text-xs sm:text-sm py-1 px-3 h-8 cursor-pointer bg-blue-500 hover:bg-blue-600"
                                                                 type="submit"
                                                                 disabled={isCheckingToxicity || comment.caption?.trim() === ''}
-                                                                onClick={() => isContentChecked ? undefined : handleCheckToxicity()}
                                                             >
-                                                                {getButtonText()}
+                                                                {isCheckingToxicity ? 'Posting...' : 'Post'}
                                                             </Button>
                                                         </div>
                                                     </div>
